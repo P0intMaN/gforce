@@ -1,0 +1,123 @@
+// Command gforce is the main entry point for the gforce Git platform server.
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/gforce/gforce/internal/api"
+	"github.com/gforce/gforce/internal/auth"
+	"github.com/gforce/gforce/internal/config"
+	"github.com/gforce/gforce/internal/server"
+	"github.com/gforce/gforce/internal/store/postgres"
+	"github.com/spf13/cobra"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+)
+
+func main() {
+	if err := rootCmd().Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func rootCmd() *cobra.Command {
+	root := &cobra.Command{
+		Use:   "gforce",
+		Short: "gforce — Kubernetes-native Git platform",
+	}
+	root.AddCommand(serveCmd())
+	return root
+}
+
+func serveCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "serve",
+		Short: "Start the gforce HTTP API server",
+		RunE:  runServe,
+	}
+}
+
+func runServe(_ *cobra.Command, _ []string) error {
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+
+	logger, err := buildLogger(cfg.Log.Level)
+	if err != nil {
+		return fmt.Errorf("building logger: %w", err)
+	}
+	defer logger.Sync() //nolint:errcheck
+
+	ctx := context.Background()
+
+	db, err := postgres.New(ctx, cfg.DB.DSN, int32(cfg.DB.MaxOpenConns), int32(cfg.DB.MaxIdleConns))
+	if err != nil {
+		return fmt.Errorf("connecting to database: %w", err)
+	}
+	defer db.Close()
+	logger.Info("database connected")
+
+	authSvc, err := auth.NewService(cfg.Auth.JWTSecret, time.Duration(cfg.Auth.TokenTTLMinutes)*time.Minute)
+	if err != nil {
+		return fmt.Errorf("initialising auth service: %w", err)
+	}
+
+	handler := api.NewRouter(api.RouterConfig{
+		Store:       db,
+		AuthService: authSvc,
+		GitRootPath: cfg.Git.StoragePath,
+		Logger:      logger,
+	})
+
+	srv := server.New(server.Config{
+		Port:             cfg.Server.Port,
+		Handler:          handler,
+		ReadTimeoutSecs:  cfg.Server.ReadTimeoutSecs,
+		WriteTimeoutSecs: cfg.Server.WriteTimeoutSecs,
+		Logger:           logger,
+	})
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	serverErr := make(chan error, 1)
+	go func() { serverErr <- srv.Start() }()
+
+	select {
+	case err := <-serverErr:
+		return fmt.Errorf("server error: %w", err)
+	case sig := <-quit:
+		logger.Info("received shutdown signal", zap.String("signal", sig.String()))
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		return fmt.Errorf("graceful shutdown: %w", err)
+	}
+
+	logger.Info("server stopped cleanly")
+	return nil
+}
+
+func buildLogger(level string) (*zap.Logger, error) {
+	lvl, err := zapcore.ParseLevel(level)
+	if err != nil {
+		return nil, fmt.Errorf("parsing log level %q: %w", level, err)
+	}
+
+	cfg := zap.NewProductionConfig()
+	cfg.Level = zap.NewAtomicLevelAt(lvl)
+	cfg.EncoderConfig.TimeKey = "ts"
+	cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+
+	return cfg.Build()
+}

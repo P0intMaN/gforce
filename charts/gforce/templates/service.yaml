@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "gforce.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "gforce.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "gforce.selectorLabels" . | nindent 4 }}

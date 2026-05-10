@@ -1,0 +1,16 @@
+apiVersion: v2
+name: gforce
+description: Kubernetes-native Git platform
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - git
+  - devops
+  - kubernetes
+home: https://github.com/gforce/gforce
+sources:
+  - https://github.com/gforce/gforce
+maintainers:
+  - name: gforce maintainers
+    email: maintainers@gforce.dev

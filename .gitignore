@@ -1,0 +1,38 @@
+# Binaries
+/bin/
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Go build artifacts
+*.test
+*.out
+/vendor/
+
+# Air live-reload
+tmp/
+.air.toml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Generated files
+charts/gforce/templates/crds/
+
+# Coverage
+coverage.out
+coverage.html
