@@ -1,280 +1,309 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
-	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/gforce/gforce/internal/api/dto"
+	"github.com/gforce/gforce/internal/api/middleware"
+	"github.com/gforce/gforce/internal/api/response"
+	"github.com/gforce/gforce/internal/api/validate"
 	"github.com/gforce/gforce/internal/gitserver"
 	"github.com/gforce/gforce/internal/models"
 	"github.com/gforce/gforce/internal/store"
+	"github.com/gforce/gforce/pkg/gitutil"
 	"go.uber.org/zap"
 )
 
 // RepoHandler handles HTTP requests for repository resources.
 type RepoHandler struct {
-	store       store.RepoStore
+	store       store.Store
 	gitRootPath string
+	baseURL     string
 	logger      *zap.Logger
 }
 
-// NewRepoHandler creates a RepoHandler with the supplied dependencies.
-func NewRepoHandler(s store.RepoStore, gitRootPath string, logger *zap.Logger) *RepoHandler {
-	return &RepoHandler{store: s, gitRootPath: gitRootPath, logger: logger}
+// NewRepoHandler creates a RepoHandler.
+func NewRepoHandler(s store.Store, gitRootPath, baseURL string, logger *zap.Logger) *RepoHandler {
+	return &RepoHandler{store: s, gitRootPath: gitRootPath, baseURL: baseURL, logger: logger}
 }
 
-// Create handles POST /api/v1/repos — creates a new repository record and
-// initialises the bare git repository on disk.
+// Create handles POST /api/v1/user/repos — requires auth.
 func (h *RepoHandler) Create(w http.ResponseWriter, r *http.Request) {
-	claims, ok := claimsFromRequest(r)
+	owner, ok := middleware.UserFromContext(r.Context())
 	if !ok {
-		respondError(w, http.StatusUnauthorized, "authentication required")
+		response.Unauthorized(w)
 		return
 	}
 
-	ownerID, err := parseUUID(claims.UserID)
+	req, err := validate.DecodeAndValidate[dto.CreateRepoRequest](r)
 	if err != nil {
-		respondError(w, http.StatusBadRequest, "invalid user id in token")
-		return
-	}
-
-	var req struct {
-		Name          string  `json:"name"`
-		Description   *string `json:"description"`
-		IsPrivate     bool    `json:"is_private"`
-		DefaultBranch string  `json:"default_branch"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	if req.Name == "" {
-		respondError(w, http.StatusBadRequest, "name is required")
+		response.BadRequest(w, err.Error())
 		return
 	}
 	if req.DefaultBranch == "" {
 		req.DefaultBranch = "main"
 	}
 
-	diskPath := filepath.Join(h.gitRootPath, claims.Username, req.Name+".git")
+	diskPath := gitserver.GetRepoPath(h.gitRootPath, owner.Username, req.Name)
 
-	// Ensure the owner directory exists before touching the database.
-	if err := gitserver.EnsureOwnerDir(h.gitRootPath, claims.Username); err != nil {
-		h.logger.Error("creating owner directory",
-			zap.String("owner", claims.Username),
-			zap.Error(err),
-		)
-		respondError(w, http.StatusInternalServerError, "could not create repository")
+	if err := gitserver.EnsureOwnerDir(h.gitRootPath, owner.Username); err != nil {
+		response.InternalError(w, h.logger, err)
 		return
 	}
 
-	// Persist the repository record. On name conflict, return 409 immediately
-	// before touching the filesystem.
+	var desc *string
+	if req.Description != "" {
+		desc = &req.Description
+	}
+
 	repo, err := h.store.CreateRepo(r.Context(), models.CreateRepoParams{
-		OwnerID:       ownerID,
+		OwnerID:       owner.ID,
 		Name:          req.Name,
-		Description:   req.Description,
+		Description:   desc,
 		IsPrivate:     req.IsPrivate,
 		DefaultBranch: req.DefaultBranch,
 		DiskPath:      diskPath,
 	})
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {
-			respondError(w, http.StatusConflict, "repository with that name already exists")
+			response.Error(w, http.StatusConflict, "repository with that name already exists")
 			return
 		}
-		h.logger.Error("creating repository record", zap.String("name", req.Name), zap.Error(err))
-		respondError(w, http.StatusInternalServerError, "could not create repository")
+		response.InternalError(w, h.logger, err)
 		return
 	}
 
-	// Initialise the bare git repository. If this fails, clean up the DB record
-	// so the user can retry without hitting a conflict.
 	if err := gitserver.InitBareRepo(diskPath); err != nil {
-		h.logger.Error("initialising bare repository",
-			zap.String("path", diskPath),
-			zap.Error(err),
-		)
+		h.logger.Error("initialising bare repo", zap.String("path", diskPath), zap.Error(err))
 		if delErr := h.store.DeleteRepo(r.Context(), repo.ID); delErr != nil {
-			h.logger.Error("cleaning up orphaned repository record",
-				zap.String("repo_id", repo.ID.String()),
-				zap.Error(delErr),
-			)
+			h.logger.Error("cleaning up repo record", zap.Error(delErr))
 		}
-		respondError(w, http.StatusInternalServerError, "could not initialise repository")
+		response.InternalError(w, h.logger, err)
 		return
 	}
 
-	h.logger.Info("repository created",
-		zap.String("repo_id", repo.ID.String()),
-		zap.String("name", repo.Name),
-		zap.String("disk_path", diskPath),
-	)
-	respondJSON(w, http.StatusCreated, repo)
+	if req.InitRepo {
+		if err := gitutil.CreateInitialCommit(diskPath, req.Name, req.DefaultBranch); err != nil {
+			h.logger.Warn("creating initial commit failed", zap.String("path", diskPath), zap.Error(err))
+			// Non-fatal: repo is usable, just empty.
+		}
+	}
+
+	h.logger.Info("repository created", zap.String("repo_id", repo.ID.String()), zap.String("full_name", owner.Username+"/"+req.Name))
+	response.JSON(w, http.StatusCreated, repoToDTO(repo, owner, h.baseURL))
 }
 
-// Get handles GET /api/v1/repos/{repoID} — returns repository metadata.
+// Get handles GET /api/v1/repos/:owner/:repo — public for public repos, auth for private.
 func (h *RepoHandler) Get(w http.ResponseWriter, r *http.Request) {
-	repoID, err := parseUUID(chi.URLParam(r, "repoID"))
-	if err != nil {
-		respondError(w, http.StatusBadRequest, "invalid repository id")
-		return
-	}
-
-	repo, err := h.store.GetRepoByID(r.Context(), repoID)
+	repo, ownerUser, err := h.loadRepo(r)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			respondError(w, http.StatusNotFound, "repository not found")
+			response.NotFound(w)
 			return
 		}
-		h.logger.Error("fetching repository", zap.String("repo_id", repoID.String()), zap.Error(err))
-		respondError(w, http.StatusInternalServerError, "internal error")
+		response.InternalError(w, h.logger, err)
 		return
 	}
 
-	respondJSON(w, http.StatusOK, repo)
+	if repo.IsPrivate {
+		caller, ok := middleware.UserFromContext(r.Context())
+		if !ok || caller.ID != repo.OwnerID {
+			response.Forbidden(w)
+			return
+		}
+	}
+
+	response.JSON(w, http.StatusOK, repoToDTO(repo, ownerUser, h.baseURL))
 }
 
-// List handles GET /api/v1/repos — lists repositories owned by the authenticated user.
-func (h *RepoHandler) List(w http.ResponseWriter, r *http.Request) {
-	claims, ok := claimsFromRequest(r)
-	if !ok {
-		respondError(w, http.StatusUnauthorized, "authentication required")
-		return
-	}
-	ownerID, err := parseUUID(claims.UserID)
-	if err != nil {
-		respondError(w, http.StatusBadRequest, "invalid user id in token")
-		return
-	}
-
+// ListByUser handles GET /api/v1/users/:username/repos — public repos always visible,
+// private repos only visible to their owner.
+func (h *RepoHandler) ListByUser(w http.ResponseWriter, r *http.Request) {
+	username := chi.URLParam(r, "username")
 	limit, offset := parsePagination(r)
-	repos, err := h.store.ListReposByOwner(r.Context(), ownerID, limit, offset)
+
+	ownerUser, err := h.store.GetUserByUsername(r.Context(), username)
 	if err != nil {
-		h.logger.Error("listing repositories", zap.String("user_id", claims.UserID), zap.Error(err))
-		respondError(w, http.StatusInternalServerError, "internal error")
+		if errors.Is(err, store.ErrNotFound) {
+			response.NotFound(w)
+			return
+		}
+		response.InternalError(w, h.logger, err)
 		return
 	}
 
-	if repos == nil {
-		repos = []*models.Repository{}
-	}
-	respondJSON(w, http.StatusOK, repos)
-}
+	caller, isAuth := middleware.UserFromContext(r.Context())
+	isOwner := isAuth && caller.ID == ownerUser.ID
 
-// ListPublic handles GET /api/v1/explore/repos — lists all public repositories.
-func (h *RepoHandler) ListPublic(w http.ResponseWriter, r *http.Request) {
-	limit, offset := parsePagination(r)
-	repos, err := h.store.ListPublicRepos(r.Context(), limit, offset)
+	var repos []*models.Repository
+	if isOwner {
+		repos, err = h.store.ListReposByOwner(r.Context(), ownerUser.ID, limit, offset)
+	} else {
+		repos, err = h.store.ListPublicReposByOwner(r.Context(), ownerUser.ID, limit, offset)
+	}
 	if err != nil {
-		h.logger.Error("listing public repositories", zap.Error(err))
-		respondError(w, http.StatusInternalServerError, "internal error")
+		response.InternalError(w, h.logger, err)
 		return
 	}
-	if repos == nil {
-		repos = []*models.Repository{}
+
+	out := make([]dto.RepoResponse, 0, len(repos))
+	for _, rp := range repos {
+		out = append(out, repoToDTO(rp, ownerUser, h.baseURL))
 	}
-	respondJSON(w, http.StatusOK, repos)
+	response.JSON(w, http.StatusOK, out)
 }
 
-// Update handles PATCH /api/v1/repos/{repoID} — updates mutable repository fields.
+// Update handles PATCH /api/v1/repos/:owner/:repo — requires auth, must be owner.
 func (h *RepoHandler) Update(w http.ResponseWriter, r *http.Request) {
-	repoID, err := parseUUID(chi.URLParam(r, "repoID"))
-	if err != nil {
-		respondError(w, http.StatusBadRequest, "invalid repository id")
-		return
-	}
-	claims, ok := claimsFromRequest(r)
+	caller, ok := middleware.UserFromContext(r.Context())
 	if !ok {
-		respondError(w, http.StatusUnauthorized, "authentication required")
+		response.Unauthorized(w)
 		return
 	}
-	ownerID, _ := parseUUID(claims.UserID)
 
-	repo, err := h.store.GetRepoByID(r.Context(), repoID)
+	repo, ownerUser, err := h.loadRepo(r)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			respondError(w, http.StatusNotFound, "repository not found")
+			response.NotFound(w)
 			return
 		}
-		h.logger.Error("fetching repository for update", zap.String("repo_id", repoID.String()), zap.Error(err))
-		respondError(w, http.StatusInternalServerError, "internal error")
+		response.InternalError(w, h.logger, err)
 		return
 	}
-	if repo.OwnerID != ownerID {
-		respondError(w, http.StatusForbidden, "not your repository")
-		return
-	}
-
-	var params models.UpdateRepoParams
-	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+	if caller.ID != repo.OwnerID {
+		response.Forbidden(w)
 		return
 	}
 
-	updated, err := h.store.UpdateRepo(r.Context(), repoID, params)
+	req, err := validate.DecodeAndValidate[dto.UpdateRepoRequest](r)
 	if err != nil {
-		h.logger.Error("updating repository", zap.String("repo_id", repoID.String()), zap.Error(err))
-		respondError(w, http.StatusInternalServerError, "could not update repository")
+		response.BadRequest(w, err.Error())
 		return
 	}
 
-	respondJSON(w, http.StatusOK, updated)
+	params := models.UpdateRepoParams{IsPrivate: &req.IsPrivate}
+	if req.Description != "" {
+		params.Description = &req.Description
+	}
+	if req.DefaultBranch != "" {
+		params.DefaultBranch = &req.DefaultBranch
+	}
+
+	updated, err := h.store.UpdateRepo(r.Context(), repo.ID, params)
+	if err != nil {
+		response.InternalError(w, h.logger, err)
+		return
+	}
+	response.JSON(w, http.StatusOK, repoToDTO(updated, ownerUser, h.baseURL))
 }
 
-// Delete handles DELETE /api/v1/repos/{repoID} — removes a repository record.
+// Delete handles DELETE /api/v1/repos/:owner/:repo — requires auth, must be owner.
 func (h *RepoHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	repoID, err := parseUUID(chi.URLParam(r, "repoID"))
-	if err != nil {
-		respondError(w, http.StatusBadRequest, "invalid repository id")
-		return
-	}
-	claims, ok := claimsFromRequest(r)
+	caller, ok := middleware.UserFromContext(r.Context())
 	if !ok {
-		respondError(w, http.StatusUnauthorized, "authentication required")
+		response.Unauthorized(w)
 		return
 	}
-	ownerID, _ := parseUUID(claims.UserID)
 
-	repo, err := h.store.GetRepoByID(r.Context(), repoID)
+	repo, _, err := h.loadRepo(r)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			respondError(w, http.StatusNotFound, "repository not found")
+			response.NotFound(w)
 			return
 		}
-		h.logger.Error("fetching repository for delete", zap.String("repo_id", repoID.String()), zap.Error(err))
-		respondError(w, http.StatusInternalServerError, "internal error")
+		response.InternalError(w, h.logger, err)
 		return
 	}
-	if repo.OwnerID != ownerID {
-		respondError(w, http.StatusForbidden, "not your repository")
+	if caller.ID != repo.OwnerID {
+		response.Forbidden(w)
 		return
 	}
 
-	if err := h.store.DeleteRepo(r.Context(), repoID); err != nil {
-		h.logger.Error("deleting repository", zap.String("repo_id", repoID.String()), zap.Error(err))
-		respondError(w, http.StatusInternalServerError, "could not delete repository")
+	if err := h.store.DeleteRepo(r.Context(), repo.ID); err != nil {
+		response.InternalError(w, h.logger, err)
 		return
+	}
+
+	// Best-effort disk cleanup; log but don't fail the request.
+	if err := os.RemoveAll(repo.DiskPath); err != nil {
+		h.logger.Warn("removing repo from disk", zap.String("path", repo.DiskPath), zap.Error(err))
 	}
 
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// --- helpers ----------------------------------------------------------------
+
+// loadRepo resolves the :owner and :repo URL params into DB records.
+func (h *RepoHandler) loadRepo(r *http.Request) (*models.Repository, *models.User, error) {
+	ownerName := chi.URLParam(r, "owner")
+	repoName := chi.URLParam(r, "repo")
+
+	ownerUser, err := h.store.GetUserByUsername(r.Context(), ownerName)
+	if err != nil {
+		return nil, nil, fmt.Errorf("owner %q: %w", ownerName, err)
+	}
+
+	repo, err := h.store.GetRepoByOwnerAndName(r.Context(), ownerUser.ID, repoName)
+	if err != nil {
+		return nil, nil, fmt.Errorf("repo %q/%q: %w", ownerName, repoName, err)
+	}
+
+	return repo, ownerUser, nil
+}
+
+// repoToDTO converts a Repository model to the public RepoResponse DTO.
+// disk_path, fork_of, and other internal fields are excluded.
+func repoToDTO(r *models.Repository, owner *models.User, baseURL string) dto.RepoResponse {
+	fullName := owner.Username + "/" + r.Name
+	return dto.RepoResponse{
+		ID:            r.ID,
+		Name:          r.Name,
+		FullName:      fullName,
+		Description:   derefStr(r.Description),
+		IsPrivate:     r.IsPrivate,
+		DefaultBranch: r.DefaultBranch,
+		CloneURL:      baseURL + "/" + fullName + ".git",
+		StarCount:     r.StarCount,
+		ForkCount:     r.ForkCount,
+		Owner:         userToDTO(owner),
+		CreatedAt:     r.CreatedAt,
+		UpdatedAt:     r.UpdatedAt,
+	}
+}
+
 func parsePagination(r *http.Request) (limit, offset int) {
 	limit = 30
-	offset = 0
 	if v := r.URL.Query().Get("limit"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 100 {
+		if n := parseInt(v, 1, 100); n > 0 {
 			limit = n
 		}
 	}
 	if v := r.URL.Query().Get("offset"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+		if n := parseInt(v, 0, 1<<31); n >= 0 {
 			offset = n
 		}
 	}
 	return limit, offset
 }
+
+func parseInt(s string, min, max int) int {
+	var n int
+	if _, err := fmt.Sscanf(s, "%d", &n); err != nil || n < min || n > max {
+		return -1
+	}
+	return n
+}
+
+// diskPathFor returns the expected disk path for owner/repo.
+func diskPathFor(gitRootPath, username, repoName string) string {
+	return filepath.Join(gitRootPath, username, repoName+".git")
+}
+
+// ensure diskPathFor is referenced (avoids "declared and not used" if not called elsewhere)
+var _ = diskPathFor

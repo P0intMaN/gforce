@@ -22,6 +22,10 @@ type Config struct {
 type ServerConfig struct {
 	// Port is the TCP port the HTTP server listens on.
 	Port int `mapstructure:"port"`
+	// BaseURL is the externally reachable URL of this server (used for clone URLs).
+	BaseURL string `mapstructure:"base_url"`
+	// AllowedOrigins lists origins allowed by the CORS middleware. Use ["*"] for open access.
+	AllowedOrigins []string `mapstructure:"allowed_origins"`
 	// ReadTimeoutSecs is the maximum duration for reading an entire request.
 	ReadTimeoutSecs int `mapstructure:"read_timeout_secs"`
 	// WriteTimeoutSecs is the maximum duration for writing a response.
@@ -89,6 +93,8 @@ func Load() (*Config, error) {
 
 func setDefaults(v *viper.Viper) {
 	v.SetDefault("server.port", 8080)
+	v.SetDefault("server.base_url", "http://localhost:8080")
+	v.SetDefault("server.allowed_origins", []string{"*"})
 	v.SetDefault("server.read_timeout_secs", 30)
 	v.SetDefault("server.write_timeout_secs", 30)
 	v.SetDefault("db.max_open_conns", 25)
