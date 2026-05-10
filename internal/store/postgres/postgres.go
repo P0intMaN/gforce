@@ -95,6 +95,12 @@ const (
 		FROM repositories WHERE is_private = false
 		ORDER BY created_at DESC LIMIT $1 OFFSET $2`
 
+	sqlListPublicReposByOwner = `
+		SELECT id, owner_id, name, description, is_private, default_branch,
+		       disk_path, fork_of, star_count, fork_count, created_at, updated_at
+		FROM repositories WHERE owner_id = $1 AND is_private = false
+		ORDER BY created_at DESC LIMIT $2 OFFSET $3`
+
 	sqlUpdateRepo = `
 		UPDATE repositories
 		SET name           = COALESCE($2, name),
@@ -370,6 +376,11 @@ func (db *DB) ListPublicRepos(ctx context.Context, limit, offset int) ([]*models
 	return queryRepos(ctx, db.pool, sqlListPublicRepos, limit, offset)
 }
 
+// ListPublicReposByOwner implements store.RepoStore.
+func (db *DB) ListPublicReposByOwner(ctx context.Context, ownerID uuid.UUID, limit, offset int) ([]*models.Repository, error) {
+	return queryRepos(ctx, db.pool, sqlListPublicReposByOwner, ownerID, limit, offset)
+}
+
 // UpdateRepo implements store.RepoStore.
 func (db *DB) UpdateRepo(ctx context.Context, id uuid.UUID, p models.UpdateRepoParams) (*models.Repository, error) {
 	r, err := scanRepo(db.pool.QueryRow(ctx, sqlUpdateRepo,
@@ -523,6 +534,10 @@ func (t *txStore) ListReposByOwner(ctx context.Context, ownerID uuid.UUID, limit
 
 func (t *txStore) ListPublicRepos(ctx context.Context, limit, offset int) ([]*models.Repository, error) {
 	return queryRepos(ctx, t.tx, sqlListPublicRepos, limit, offset)
+}
+
+func (t *txStore) ListPublicReposByOwner(ctx context.Context, ownerID uuid.UUID, limit, offset int) ([]*models.Repository, error) {
+	return queryRepos(ctx, t.tx, sqlListPublicReposByOwner, ownerID, limit, offset)
 }
 
 func (t *txStore) UpdateRepo(ctx context.Context, id uuid.UUID, p models.UpdateRepoParams) (*models.Repository, error) {

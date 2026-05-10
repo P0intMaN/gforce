@@ -81,10 +81,12 @@ func runServe(_ *cobra.Command, _ []string) error {
 	}
 
 	handler := api.NewRouter(api.RouterConfig{
-		Store:       db,
-		AuthService: authSvc,
-		GitRootPath: cfg.Git.StoragePath,
-		Logger:      logger,
+		Store:          db,
+		AuthService:    authSvc,
+		GitRootPath:    cfg.Git.StoragePath,
+		BaseURL:        cfg.Server.BaseURL,
+		AllowedOrigins: cfg.Server.AllowedOrigins,
+		Logger:         logger,
 	})
 
 	srv := server.New(server.Config{

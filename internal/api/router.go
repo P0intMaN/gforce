@@ -1,4 +1,4 @@
-// Package api wires together the Chi router and all HTTP handlers.
+// Package api wires together the Chi router, middleware, and all HTTP handlers.
 package api
 
 import (
@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 	"github.com/gforce/gforce/internal/api/handlers"
 	"github.com/gforce/gforce/internal/api/middleware"
 	"github.com/gforce/gforce/internal/auth"
@@ -15,63 +16,98 @@ import (
 	"go.uber.org/zap"
 )
 
-// RouterConfig bundles the dependencies required to build the router.
+// RouterConfig bundles every dependency required to build the router.
 type RouterConfig struct {
-	Store       store.Store
-	AuthService *auth.Service
-	GitRootPath string
-	Logger      *zap.Logger
+	Store          store.Store
+	AuthService    *auth.Service
+	GitRootPath    string
+	BaseURL        string
+	AllowedOrigins []string
+	Logger         *zap.Logger
 }
 
 // NewRouter constructs the full Chi router with all middleware and routes registered.
-// The git smart-HTTP handler is mounted last as a catch-all for /{owner}/{repo}.git/... paths.
 func NewRouter(cfg RouterConfig) http.Handler {
 	r := chi.NewRouter()
 
-	authn := middleware.NewAuthenticator(cfg.AuthService)
+	// Token validator interface satisfied by *auth.Service.
+	tv := cfg.AuthService
 
-	r.Use(chimiddleware.RequestID)
+	// ── Global middleware ────────────────────────────────────────────────────
+	origins := cfg.AllowedOrigins
+	if len(origins) == 0 {
+		origins = []string{"*"}
+	}
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   origins,
+		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Request-ID"},
+		ExposedHeaders:   []string{"X-Request-ID", "X-RateLimit-Limit"},
+		AllowCredentials: false,
+		MaxAge:           300,
+	}))
 	r.Use(chimiddleware.RealIP)
 	r.Use(middleware.RequestLogger(cfg.Logger))
 	r.Use(chimiddleware.Recoverer)
+	r.Use(middleware.RateLimit(100)) // 100 req/min per IP
 
+	// ── Handlers ─────────────────────────────────────────────────────────────
 	userH := handlers.NewUserHandler(cfg.Store, cfg.AuthService, cfg.Logger)
-	repoH := handlers.NewRepoHandler(cfg.Store, cfg.GitRootPath, cfg.Logger)
-	gitH := handlers.NewGitHandler(cfg.Store, cfg.Logger)
-	gitSmartHTTP := gitserver.NewGitHandler(cfg.Store, cfg.AuthService, cfg.GitRootPath, cfg.Logger)
+	repoH := handlers.NewRepoHandler(cfg.Store, cfg.GitRootPath, cfg.BaseURL, cfg.Logger)
+	gitContentH := handlers.NewGitContentHandler(cfg.Store, cfg.BaseURL, cfg.Logger)
+	gitSmartHTTP := gitserver.NewGitHandler(cfg.Store, tv, cfg.GitRootPath, cfg.Logger)
 
+	// ── Infra routes ─────────────────────────────────────────────────────────
 	r.Get("/healthz", healthz)
 	r.Handle("/metrics", promhttp.Handler())
 
+	// ── API v1 ───────────────────────────────────────────────────────────────
 	r.Route("/api/v1", func(r chi.Router) {
+		// Public auth
+		r.Post("/auth/register", userH.Register)
 		r.Post("/auth/login", userH.Login)
-		r.Post("/users", userH.Register)
 
-		r.Get("/explore/repos", repoH.ListPublic)
+		// Public user endpoints
+		r.Get("/users/{username}", userH.GetUser)
+		r.With(middleware.OptionalAuth(tv, cfg.Store)).Get("/users/{username}/repos", repoH.ListByUser)
 
+		// Public repo endpoint — optional auth so private repos return 403 not 404
+		r.With(middleware.OptionalAuth(tv, cfg.Store)).Get("/repos/{owner}/{repo}", repoH.Get)
+
+		// Authenticated user endpoints
 		r.Group(func(r chi.Router) {
-			r.Use(authn.Require)
+			r.Use(middleware.RequireAuth(tv, cfg.Store))
 
-			r.Get("/users/me", userH.GetCurrentUser)
+			r.Get("/user", userH.GetCurrentUser)
+			r.Patch("/user", userH.UpdateProfile)
+			r.Post("/user/repos", repoH.Create)
+			r.Post("/user/keys", userH.AddSSHKey)
+			r.Get("/user/keys", userH.ListSSHKeys)
+			r.Delete("/user/keys/{id}", userH.DeleteSSHKey)
+		})
 
-			r.Route("/repos", func(r chi.Router) {
-				r.Get("/", repoH.List)
-				r.Post("/", repoH.Create)
+		// Repo mutation — owner only
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.RequireAuth(tv, cfg.Store))
 
-				r.Route("/{repoID}", func(r chi.Router) {
-					r.Get("/", repoH.Get)
-					r.Patch("/", repoH.Update)
-					r.Delete("/", repoH.Delete)
+			r.Patch("/repos/{owner}/{repo}", repoH.Update)
+			r.Delete("/repos/{owner}/{repo}", repoH.Delete)
+		})
 
-					r.Get("/commits", gitH.ListCommits)
-					r.Get("/branches", gitH.ListBranches)
-				})
-			})
+		// Git content — optional auth (private repo access check inside handler)
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.OptionalAuth(tv, cfg.Store))
+
+			r.Get("/repos/{owner}/{repo}/tree/{ref}", gitContentH.GetTree)
+			r.Get("/repos/{owner}/{repo}/blob/{ref}/*", gitContentH.GetBlob)
+			r.Get("/repos/{owner}/{repo}/commits/{ref}", gitContentH.ListCommits)
+			r.Get("/repos/{owner}/{repo}/branches", gitContentH.ListBranches)
+			r.Get("/repos/{owner}/{repo}/refs/{ref}/exists", gitContentH.RefExists)
 		})
 	})
 
-	// Git smart-HTTP: catch-all after all API routes.
-	// GitHandler.ServeHTTP returns 404 for any path that is not a git protocol URL.
+	// Git smart-HTTP — catch-all after all API routes.
+	// GitHandler.ServeHTTP returns 404 for non-git paths.
 	r.Handle("/*", gitSmartHTTP)
 
 	return r

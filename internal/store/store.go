@@ -45,6 +45,8 @@ type RepoStore interface {
 	ListReposByOwner(ctx context.Context, ownerID uuid.UUID, limit, offset int) ([]*models.Repository, error)
 	// ListPublicRepos returns a paginated list of all public repositories.
 	ListPublicRepos(ctx context.Context, limit, offset int) ([]*models.Repository, error)
+	// ListPublicReposByOwner returns a paginated list of public repositories for a specific owner.
+	ListPublicReposByOwner(ctx context.Context, ownerID uuid.UUID, limit, offset int) ([]*models.Repository, error)
 	// UpdateRepo applies params to the repository identified by id and returns the updated record.
 	UpdateRepo(ctx context.Context, id uuid.UUID, params models.UpdateRepoParams) (*models.Repository, error)
 	// DeleteRepo removes the repository with the given id.
