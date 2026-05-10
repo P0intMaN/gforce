@@ -9,6 +9,12 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+// TokenValidator is the interface for validating bearer tokens.
+// *Service satisfies it automatically.
+type TokenValidator interface {
+	Validate(token string) (*Claims, error)
+}
+
 // Claims are the custom JWT claims embedded in every gforce token.
 type Claims struct {
 	UserID   string `json:"user_id"`

@@ -9,6 +9,7 @@ import (
 	"github.com/gforce/gforce/internal/api/handlers"
 	"github.com/gforce/gforce/internal/api/middleware"
 	"github.com/gforce/gforce/internal/auth"
+	"github.com/gforce/gforce/internal/gitserver"
 	"github.com/gforce/gforce/internal/store"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
@@ -23,8 +24,7 @@ type RouterConfig struct {
 }
 
 // NewRouter constructs the full Chi router with all middleware and routes registered.
-// store.Store embeds UserStore, RepoStore, and SSHKeyStore, so it is passed directly
-// to each handler constructor which accepts the narrower sub-interface.
+// The git smart-HTTP handler is mounted last as a catch-all for /{owner}/{repo}.git/... paths.
 func NewRouter(cfg RouterConfig) http.Handler {
 	r := chi.NewRouter()
 
@@ -38,6 +38,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	userH := handlers.NewUserHandler(cfg.Store, cfg.AuthService, cfg.Logger)
 	repoH := handlers.NewRepoHandler(cfg.Store, cfg.GitRootPath, cfg.Logger)
 	gitH := handlers.NewGitHandler(cfg.Store, cfg.Logger)
+	gitSmartHTTP := gitserver.NewGitHandler(cfg.Store, cfg.AuthService, cfg.GitRootPath, cfg.Logger)
 
 	r.Get("/healthz", healthz)
 	r.Handle("/metrics", promhttp.Handler())
@@ -68,6 +69,10 @@ func NewRouter(cfg RouterConfig) http.Handler {
 			})
 		})
 	})
+
+	// Git smart-HTTP: catch-all after all API routes.
+	// GitHandler.ServeHTTP returns 404 for any path that is not a git protocol URL.
+	r.Handle("/*", gitSmartHTTP)
 
 	return r
 }
