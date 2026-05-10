@@ -223,19 +223,25 @@ func (h *GitHandler) resolveRepo(ctx context.Context, owner, repoName string) (*
 }
 
 // authenticate extracts and validates credentials from the request.
-// Supports Bearer tokens and Basic auth (where the password is a JWT).
-// Returns (nil, nil) when no credentials are presented — the caller decides
-// whether that is acceptable for the requested resource.
+//
+// Supported schemes:
+//   - Bearer <jwt>       — standard API token header
+//   - Basic <b64>        — git CLI credential helper; username = GForce username,
+//     password = JWT API token. The username in the Basic header must match
+//     the subject (username) in the JWT claims.
+//
+// Returns (nil, nil) when no Authorization header is present — the caller
+// decides whether unauthenticated access is acceptable.
 func (h *GitHandler) authenticate(r *http.Request) (*models.User, error) {
 	raw := r.Header.Get("Authorization")
 	if raw == "" {
 		return nil, nil
 	}
 
-	var token string
 	switch {
 	case strings.HasPrefix(raw, "Bearer "):
-		token = strings.TrimPrefix(raw, "Bearer ")
+		token := strings.TrimPrefix(raw, "Bearer ")
+		return h.validateToken(r.Context(), token)
 
 	case strings.HasPrefix(raw, "Basic "):
 		decoded, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(raw, "Basic "))
@@ -243,16 +249,30 @@ func (h *GitHandler) authenticate(r *http.Request) (*models.User, error) {
 			return nil, fmt.Errorf("gitserver: decoding basic auth: %w", err)
 		}
 		parts := strings.SplitN(string(decoded), ":", 2)
-		if len(parts) != 2 || parts[1] == "" {
+		if len(parts) != 2 {
 			return nil, fmt.Errorf("gitserver: malformed basic auth credentials")
 		}
-		token = parts[1]
+		basicUsername, passwordToken := parts[0], parts[1]
+		if passwordToken == "" {
+			// git prompted for credentials but the user left the password blank.
+			return nil, fmt.Errorf("gitserver: basic auth password (API token) is empty")
+		}
+
+		user, err := h.validateToken(r.Context(), passwordToken)
+		if err != nil {
+			return nil, err
+		}
+		// Verify the username supplied in Basic auth matches the token subject.
+		// This prevents one user from authenticating as another by reusing a token.
+		if basicUsername != "" && basicUsername != user.Username {
+			return nil, fmt.Errorf("gitserver: basic auth username %q does not match token subject %q",
+				basicUsername, user.Username)
+		}
+		return user, nil
 
 	default:
 		return nil, fmt.Errorf("gitserver: unsupported authorization scheme")
 	}
-
-	return h.validateToken(r.Context(), token)
 }
 
 // validateToken validates the JWT string and loads the associated user from the store.
@@ -301,8 +321,9 @@ func (h *GitHandler) authorizeRepo(user *models.User, repo *models.Repository, s
 }
 
 // requireBasicAuth writes a 401 with the WWW-Authenticate challenge.
+// The realm message tells the git CLI what to put in the password field.
 func (h *GitHandler) requireBasicAuth(w http.ResponseWriter) {
-	w.Header().Set("WWW-Authenticate", `Basic realm="GForce"`)
+	w.Header().Set("WWW-Authenticate", `Basic realm="GForce - use your API token as password"`)
 	http.Error(w, "authentication required", http.StatusUnauthorized)
 }
 

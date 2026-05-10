@@ -101,7 +101,7 @@ func (h *RepoHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.InitRepo {
-		if err := gitutil.CreateInitialCommit(diskPath, req.Name, req.DefaultBranch); err != nil {
+		if err := gitutil.CreateInitialCommit(diskPath, req.Name, req.DefaultBranch, h.logger); err != nil {
 			h.logger.Warn("creating initial commit failed", zap.String("path", diskPath), zap.Error(err))
 			// Non-fatal: repo is usable, just empty.
 		}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	gogit "github.com/go-git/go-git/v5"
@@ -12,6 +13,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/gforce/gforce/internal/models"
+	"go.uber.org/zap"
 )
 
 // InitBare initialises a bare git repository at the given path.
@@ -26,7 +28,11 @@ func InitBare(path string) error {
 
 // CreateInitialCommit creates a README.md and makes the first commit in the
 // bare repository at bareRepoPath. The commit is pushed to refs/heads/<branch>.
-func CreateInitialCommit(bareRepoPath, repoName, branch string) error {
+// logger may be nil (a no-op logger is used in that case).
+func CreateInitialCommit(bareRepoPath, repoName, branch string, logger *zap.Logger) error {
+	if logger == nil {
+		logger = zap.NewNop()
+	}
 	tmpDir, err := os.MkdirTemp("", "gforce-init-*")
 	if err != nil {
 		return fmt.Errorf("gitutil.CreateInitialCommit: creating temp dir: %w", err)
@@ -52,9 +58,11 @@ func CreateInitialCommit(bareRepoPath, repoName, branch string) error {
 	}
 
 	sig := &object.Signature{Name: "gforce", Email: "noreply@gforce.dev", When: time.Now()}
-	if _, err := wt.Commit("Initial commit", &gogit.CommitOptions{Author: sig, Committer: sig}); err != nil {
+	commitHash, err := wt.Commit("Initial commit", &gogit.CommitOptions{Author: sig, Committer: sig})
+	if err != nil {
 		return fmt.Errorf("gitutil.CreateInitialCommit: committing: %w", err)
 	}
+	logger.Debug("initial commit created", zap.String("sha", commitHash.String()), zap.String("repo", repoName))
 
 	if _, err := localRepo.CreateRemote(&gitconfig.RemoteConfig{
 		Name: "origin",
@@ -67,7 +75,7 @@ func CreateInitialCommit(bareRepoPath, repoName, branch string) error {
 	if err := localRepo.Push(&gogit.PushOptions{
 		RemoteName: "origin",
 		RefSpecs:   []gitconfig.RefSpec{refSpec},
-	}); err != nil {
+	}); err != nil && !isAlreadyUpToDate(err) {
 		return fmt.Errorf("gitutil.CreateInitialCommit: pushing: %w", err)
 	}
 
@@ -152,6 +160,17 @@ func ListBranches(diskPath string) ([]string, error) {
 		return nil, fmt.Errorf("iterating branches: %w", err)
 	}
 	return names, nil
+}
+
+// isAlreadyUpToDate reports whether a push error is the benign
+// "already up-to-date" response from go-git. This happens when the bare repo
+// was initialised with the same content before the push ran (e.g. the server
+// restarted and re-ran InitBareRepo on an existing repo). It is not an error.
+func isAlreadyUpToDate(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "already up-to-date")
 }
 
 // DefaultBranch returns the symbolic HEAD reference target.

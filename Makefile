@@ -2,9 +2,12 @@ BINARY        := gforce
 IMAGE         := ghcr.io/gforce/gforce
 TAG           ?= dev
 GOPATH_BIN    := $(shell go env GOPATH)/bin
+TOOLS_BIN     := $(HOME)/go-packages/bin
 LOCALBIN      := $(shell pwd)/bin
 ENVTEST_K8S   := 1.29.x
-CONTROLLER_GEN := $(GOPATH_BIN)/controller-gen
+CONTROLLER_GEN := $(TOOLS_BIN)/controller-gen
+AIR            := $(TOOLS_BIN)/air
+GOLANGCI_LINT  := $(TOOLS_BIN)/golangci-lint
 ENVTEST        := go run sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
 
 $(LOCALBIN):
@@ -28,7 +31,7 @@ test-integration: envtest-assets
 
 ## lint: Run golangci-lint.
 lint:
-	$(GOPATH_BIN)/golangci-lint run ./...
+	$(GOLANGCI_LINT) run ./...
 
 ## docker-build: Build the container image.
 docker-build:
@@ -60,7 +63,7 @@ envtest-assets: $(LOCALBIN)
 
 ## dev: Run the server locally with live reload via air.
 dev:
-	$(GOPATH_BIN)/air -c .air.toml
+	$(AIR) -c .air.toml
 
 ## help: Show this help message.
 help:
