@@ -88,6 +88,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 
 			r.Get("/user", userH.GetCurrentUser)
 			r.Patch("/user", userH.UpdateProfile)
+			r.Get("/user/repos", repoH.List)
 			r.Post("/user/repos", repoH.Create)
 			r.Post("/user/keys", userH.AddSSHKey)
 			r.Get("/user/keys", userH.ListSSHKeys)
