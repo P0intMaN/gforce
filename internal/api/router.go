@@ -11,6 +11,7 @@ import (
 	"github.com/gforce/gforce/internal/api/middleware"
 	"github.com/gforce/gforce/internal/auth"
 	"github.com/gforce/gforce/internal/gitserver"
+	"github.com/gforce/gforce/internal/server"
 	"github.com/gforce/gforce/internal/store"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	k8sclient "sigs.k8s.io/controller-runtime/pkg/client"
@@ -28,6 +29,9 @@ type RouterConfig struct {
 	// K8sClient is optional — when non-nil, Repository CRs are created on repo creation.
 	K8sClient    k8sclient.Client
 	K8sNamespace string
+	// UIDistDir is the path to the built React UI (ui/dist).
+	// When set, the UI is served as a catch-all fallback after all API routes.
+	UIDistDir string
 }
 
 // NewRouter constructs the full Chi router with all middleware and routes registered.
@@ -110,11 +114,33 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		})
 	})
 
-	// Git smart-HTTP — catch-all after all API routes.
-	// GitHandler.ServeHTTP returns 404 for non-git paths.
-	r.Handle("/*", gitSmartHTTP)
+	// Catch-all: git smart-HTTP for /{owner}/{repo}.git/... paths;
+	// React SPA for everything else (when UIDistDir is configured).
+	if uiH := server.UIHandler(cfg.UIDistDir); uiH != nil {
+		r.Handle("/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if isGitPath(r.URL.Path) {
+				gitSmartHTTP.ServeHTTP(w, r)
+				return
+			}
+			uiH.ServeHTTP(w, r)
+		}))
+	} else {
+		r.Handle("/*", gitSmartHTTP)
+	}
 
 	return r
+}
+
+// isGitPath returns true for paths that belong to the git smart-HTTP protocol.
+func isGitPath(path string) bool {
+	return len(path) > 4 &&
+		(containsSuffix(path, ".git/info/refs") ||
+			containsSuffix(path, ".git/git-upload-pack") ||
+			containsSuffix(path, ".git/git-receive-pack"))
+}
+
+func containsSuffix(s, suffix string) bool {
+	return len(s) >= len(suffix) && s[len(s)-len(suffix):] == suffix
 }
 
 func healthz(w http.ResponseWriter, _ *http.Request) {

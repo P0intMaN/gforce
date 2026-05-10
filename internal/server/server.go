@@ -5,6 +5,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -54,4 +57,42 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		return fmt.Errorf("shutting down http server: %w", err)
 	}
 	return nil
+}
+
+// UIHandler returns an http.Handler that serves the built React UI from distDir.
+// Non-API, non-git paths that don't match a file on disk fall back to index.html,
+// supporting SPA client-side routing.
+//
+// Returns nil when distDir is empty or does not exist (UI not built yet).
+func UIHandler(distDir string) http.Handler {
+	if distDir == "" {
+		return nil
+	}
+	if _, err := os.Stat(distDir); err != nil {
+		return nil
+	}
+
+	fs := http.FileServer(http.Dir(distDir))
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Never serve API or git paths — those are handled by the main router.
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			http.NotFound(w, r)
+			return
+		}
+		if strings.Contains(r.URL.Path, ".git/") {
+			http.NotFound(w, r)
+			return
+		}
+
+		// Check if the file exists in distDir.
+		filePath := filepath.Join(distDir, filepath.Clean(r.URL.Path))
+		if _, err := os.Stat(filePath); err != nil {
+			// SPA fallback: serve index.html so React Router handles the route.
+			http.ServeFile(w, r, filepath.Join(distDir, "index.html"))
+			return
+		}
+
+		fs.ServeHTTP(w, r)
+	})
 }

@@ -34,6 +34,10 @@ Thumbs.db
 charts/gforce/templates/crds/
 data/
 
+# UI build artifacts
+ui/node_modules/
+ui/dist/
+
 # Coverage
 coverage.out
 coverage.html
