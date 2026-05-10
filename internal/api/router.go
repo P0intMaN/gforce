@@ -23,6 +23,8 @@ type RouterConfig struct {
 }
 
 // NewRouter constructs the full Chi router with all middleware and routes registered.
+// store.Store embeds UserStore, RepoStore, and SSHKeyStore, so it is passed directly
+// to each handler constructor which accepts the narrower sub-interface.
 func NewRouter(cfg RouterConfig) http.Handler {
 	r := chi.NewRouter()
 
@@ -33,9 +35,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	r.Use(middleware.RequestLogger(cfg.Logger))
 	r.Use(chimiddleware.Recoverer)
 
-	userH := handlers.NewUserHandler(cfg.Store.Users(), cfg.AuthService, cfg.Logger)
-	repoH := handlers.NewRepoHandler(cfg.Store.Repos(), cfg.GitRootPath, cfg.Logger)
-	gitH := handlers.NewGitHandler(cfg.Store.Repos(), cfg.Logger)
+	userH := handlers.NewUserHandler(cfg.Store, cfg.AuthService, cfg.Logger)
+	repoH := handlers.NewRepoHandler(cfg.Store, cfg.GitRootPath, cfg.Logger)
+	gitH := handlers.NewGitHandler(cfg.Store, cfg.Logger)
 
 	r.Get("/healthz", healthz)
 	r.Handle("/metrics", promhttp.Handler())
@@ -43,6 +45,8 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Post("/auth/login", userH.Login)
 		r.Post("/users", userH.Register)
+
+		r.Get("/explore/repos", repoH.ListPublic)
 
 		r.Group(func(r chi.Router) {
 			r.Use(authn.Require)

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -10,28 +11,31 @@ import (
 )
 
 // GitHandler handles API requests that expose git data (commits, branches, trees).
-// Raw git smart-HTTP protocol is handled separately by gitserver.Handler.
 type GitHandler struct {
-	repos  store.RepoStore
+	store  store.RepoStore
 	logger *zap.Logger
 }
 
 // NewGitHandler creates a GitHandler with the supplied dependencies.
-func NewGitHandler(repos store.RepoStore, logger *zap.Logger) *GitHandler {
-	return &GitHandler{repos: repos, logger: logger}
+func NewGitHandler(s store.RepoStore, logger *zap.Logger) *GitHandler {
+	return &GitHandler{store: s, logger: logger}
 }
 
-// ListCommits handles GET /api/v1/repos/{repoID}/commits — returns recent commits.
+// ListCommits handles GET /api/v1/repos/{repoID}/commits.
 func (h *GitHandler) ListCommits(w http.ResponseWriter, r *http.Request) {
-	repoID := chi.URLParam(r, "repoID")
-
-	repo, err := h.repos.GetByID(r.Context(), repoID)
+	repoID, err := parseUUID(chi.URLParam(r, "repoID"))
 	if err != nil {
-		if store.IsNotFound(err) {
+		respondError(w, http.StatusBadRequest, "invalid repository id")
+		return
+	}
+
+	repo, err := h.store.GetRepoByID(r.Context(), repoID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
 			respondError(w, http.StatusNotFound, "repository not found")
 			return
 		}
-		h.logger.Error("fetching repo for commits", zap.String("repo_id", repoID), zap.Error(err))
+		h.logger.Error("fetching repo for commits", zap.String("repo_id", repoID.String()), zap.Error(err))
 		respondError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -46,17 +50,21 @@ func (h *GitHandler) ListCommits(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, commits)
 }
 
-// ListBranches handles GET /api/v1/repos/{repoID}/branches — returns all branches.
+// ListBranches handles GET /api/v1/repos/{repoID}/branches.
 func (h *GitHandler) ListBranches(w http.ResponseWriter, r *http.Request) {
-	repoID := chi.URLParam(r, "repoID")
-
-	repo, err := h.repos.GetByID(r.Context(), repoID)
+	repoID, err := parseUUID(chi.URLParam(r, "repoID"))
 	if err != nil {
-		if store.IsNotFound(err) {
+		respondError(w, http.StatusBadRequest, "invalid repository id")
+		return
+	}
+
+	repo, err := h.store.GetRepoByID(r.Context(), repoID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
 			respondError(w, http.StatusNotFound, "repository not found")
 			return
 		}
-		h.logger.Error("fetching repo for branches", zap.String("repo_id", repoID), zap.Error(err))
+		h.logger.Error("fetching repo for branches", zap.String("repo_id", repoID.String()), zap.Error(err))
 		respondError(w, http.StatusInternalServerError, "internal error")
 		return
 	}

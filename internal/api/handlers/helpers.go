@@ -2,8 +2,10 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
+	"github.com/google/uuid"
 	"github.com/gforce/gforce/internal/api/middleware"
 	"github.com/gforce/gforce/internal/auth"
 )
@@ -28,4 +30,13 @@ func respondError(w http.ResponseWriter, status int, msg string) {
 func claimsFromRequest(r *http.Request) (*auth.Claims, bool) {
 	c := middleware.ClaimsFromContext(r.Context())
 	return c, c != nil
+}
+
+// parseUUID parses s as a UUID, returning a typed error on failure.
+func parseUUID(s string) (uuid.UUID, error) {
+	id, err := uuid.Parse(s)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("invalid UUID %q: %w", s, err)
+	}
+	return id, nil
 }

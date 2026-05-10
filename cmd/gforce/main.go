@@ -13,6 +13,7 @@ import (
 	"github.com/gforce/gforce/internal/auth"
 	"github.com/gforce/gforce/internal/config"
 	"github.com/gforce/gforce/internal/server"
+	"github.com/gforce/gforce/internal/store"
 	"github.com/gforce/gforce/internal/store/postgres"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
@@ -57,11 +58,21 @@ func runServe(_ *cobra.Command, _ []string) error {
 
 	ctx := context.Background()
 
-	db, err := postgres.New(ctx, cfg.DB.DSN, int32(cfg.DB.MaxOpenConns), int32(cfg.DB.MaxIdleConns))
+	pool, err := postgres.NewPool(ctx, cfg.DB.DSN, int32(cfg.DB.MaxOpenConns), int32(cfg.DB.MaxIdleConns))
 	if err != nil {
 		return fmt.Errorf("connecting to database: %w", err)
 	}
-	defer db.Close()
+	defer pool.Close()
+
+	if err := store.RunMigrations(ctx, pool, "internal/store/migrations"); err != nil {
+		return fmt.Errorf("running migrations: %w", err)
+	}
+	logger.Info("migrations applied")
+
+	db := postgres.NewDB(pool)
+	if err := db.Ping(ctx); err != nil {
+		return fmt.Errorf("database not reachable: %w", err)
+	}
 	logger.Info("database connected")
 
 	authSvc, err := auth.NewService(cfg.Auth.JWTSecret, time.Duration(cfg.Auth.TokenTTLMinutes)*time.Minute)

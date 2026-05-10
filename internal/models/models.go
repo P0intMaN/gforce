@@ -1,29 +1,64 @@
 // Package models defines the core domain types for gforce.
 package models
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 // User represents a gforce platform user.
 type User struct {
-	ID           string    `db:"id"            json:"id"`
-	Username     string    `db:"username"      json:"username"`
-	Email        string    `db:"email"         json:"email"`
-	PasswordHash string    `db:"password_hash" json:"-"`
-	CreatedAt    time.Time `db:"created_at"    json:"created_at"`
-	UpdatedAt    time.Time `db:"updated_at"    json:"updated_at"`
+	ID           uuid.UUID `json:"id"`
+	Username     string    `json:"username"`
+	Email        string    `json:"email"`
+	PasswordHash string    `json:"-"` // never serialised
+	DisplayName  *string   `json:"display_name"`
+	AvatarURL    *string   `json:"avatar_url"`
+	Bio          *string   `json:"bio"`
+	IsAdmin      bool      `json:"is_admin"`
+	IsActive     bool      `json:"is_active"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // Repository represents a git repository hosted on gforce.
 type Repository struct {
-	ID            string    `db:"id"             json:"id"`
-	OwnerID       string    `db:"owner_id"       json:"owner_id"`
-	Name          string    `db:"name"           json:"name"`
-	Description   string    `db:"description"    json:"description"`
-	IsPrivate     bool      `db:"is_private"     json:"is_private"`
-	DefaultBranch string    `db:"default_branch" json:"default_branch"`
-	DiskPath      string    `db:"disk_path"      json:"disk_path"`
-	CreatedAt     time.Time `db:"created_at"     json:"created_at"`
-	UpdatedAt     time.Time `db:"updated_at"     json:"updated_at"`
+	ID            uuid.UUID  `json:"id"`
+	OwnerID       uuid.UUID  `json:"owner_id"`
+	Name          string     `json:"name"`
+	Description   *string    `json:"description"`
+	IsPrivate     bool       `json:"is_private"`
+	DefaultBranch string     `json:"default_branch"`
+	DiskPath      string     `json:"disk_path"`
+	ForkOf        *uuid.UUID `json:"fork_of"`
+	StarCount     int        `json:"star_count"`
+	ForkCount     int        `json:"fork_count"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+}
+
+// SSHKey represents a user's registered SSH public key.
+type SSHKey struct {
+	ID          uuid.UUID  `json:"id"`
+	UserID      uuid.UUID  `json:"user_id"`
+	Title       string     `json:"title"`
+	PublicKey   string     `json:"public_key"`
+	Fingerprint string     `json:"fingerprint"`
+	LastUsedAt  *time.Time `json:"last_used_at"`
+	CreatedAt   time.Time  `json:"created_at"`
+}
+
+// LoginRequest is the payload for user authentication.
+type LoginRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+// LoginResponse carries the JWT issued on successful authentication.
+type LoginResponse struct {
+	Token    string    `json:"token"`
+	IssuedAt time.Time `json:"issued_at"`
 }
 
 // Commit is a lightweight representation of a git commit for API responses.
@@ -35,38 +70,49 @@ type Commit struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
-// SSHKey represents a user's registered SSH public key.
-type SSHKey struct {
-	ID          string    `db:"id"           json:"id"`
-	UserID      string    `db:"user_id"      json:"user_id"`
-	Title       string    `db:"title"        json:"title"`
-	PublicKey   string    `db:"public_key"   json:"public_key"`
-	Fingerprint string    `db:"fingerprint"  json:"fingerprint"`
-	CreatedAt   time.Time `db:"created_at"   json:"created_at"`
+// --- params -----------------------------------------------------------------
+
+// CreateUserParams carries the fields required to create a new user.
+type CreateUserParams struct {
+	Username     string
+	Email        string
+	PasswordHash string
+	DisplayName  *string
+	AvatarURL    *string
+	Bio          *string
 }
 
-// CreateUserRequest is the payload for creating a new user.
-type CreateUserRequest struct {
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	Password string `json:"password"`
+// UpdateUserParams carries the mutable fields for a user update.
+// A nil pointer means "leave unchanged".
+type UpdateUserParams struct {
+	DisplayName *string
+	AvatarURL   *string
+	Bio         *string
 }
 
-// CreateRepoRequest is the payload for creating a new repository.
-type CreateRepoRequest struct {
-	Name          string `json:"name"`
-	Description   string `json:"description"`
-	IsPrivate     bool   `json:"is_private"`
-	DefaultBranch string `json:"default_branch"`
+// CreateRepoParams carries the fields required to create a new repository.
+type CreateRepoParams struct {
+	OwnerID       uuid.UUID
+	Name          string
+	Description   *string
+	IsPrivate     bool
+	DefaultBranch string
+	DiskPath      string
+	ForkOf        *uuid.UUID
 }
 
-// LoginRequest is the payload for user authentication.
-type LoginRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+// UpdateRepoParams carries the mutable fields for a repository update.
+type UpdateRepoParams struct {
+	Name          *string
+	Description   *string
+	IsPrivate     *bool
+	DefaultBranch *string
 }
 
-// LoginResponse carries the JWT issued on successful authentication.
-type LoginResponse struct {
-	Token string `json:"token"`
+// CreateSSHKeyParams carries the fields required to register an SSH key.
+type CreateSSHKeyParams struct {
+	UserID      uuid.UUID
+	Title       string
+	PublicKey   string
+	Fingerprint string
 }
