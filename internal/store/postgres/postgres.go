@@ -18,6 +18,9 @@ type DB struct {
 	pool *pgxpool.Pool
 }
 
+// compile-time assertion: *DB must satisfy store.Store.
+var _ store.Store = (*DB)(nil)
+
 // New opens a connection pool to the PostgreSQL instance identified by dsn.
 func New(ctx context.Context, dsn string, maxConns, minConns int32) (*DB, error) {
 	cfg, err := pgxpool.ParseConfig(dsn)
