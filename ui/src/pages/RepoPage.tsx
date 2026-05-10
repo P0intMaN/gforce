@@ -22,12 +22,15 @@ export function RepoPage() {
 
   const currentBranch = branch ?? repo?.default_branch ?? 'main'
 
+  // useFileTree and commit queries — errors are expected for empty repos
   const { data: tree, isLoading: treeLoading } = useFileTree(owner, repoName, currentBranch)
 
   const { data: commits } = useQuery<CommitResponse[]>({
     queryKey: ['commits', owner, repoName, currentBranch, 1],
     queryFn: () => getCommits(owner, repoName, currentBranch, 1, 0),
     enabled: !!repo,
+    retry: false,           // empty repos return 404 — don't retry
+    throwOnError: false,
   })
 
   const readmeEntry = tree?.entries.find(
@@ -37,6 +40,8 @@ export function RepoPage() {
     queryKey: ['readme', owner, repoName, currentBranch],
     queryFn: () => getBlob(owner, repoName, currentBranch, readmeEntry!.path),
     enabled: !!readmeEntry,
+    retry: false,
+    throwOnError: false,
   })
 
   if (repoLoading) {
@@ -58,10 +63,11 @@ export function RepoPage() {
   }
 
   const lastCommit = commits?.[0]
+  const isEmpty = !treeLoading && (!tree?.entries || tree.entries.length === 0)
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-4">
-      {/* Repo header */}
+      {/* Header */}
       <div className="mb-4">
         <div className="flex items-center gap-2 mb-1">
           <Link to={`/${owner}`} className="text-sm text-accent-blue hover:underline no-underline">
@@ -109,49 +115,74 @@ export function RepoPage() {
         </div>
       </div>
 
-      {/* Main content */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-        <div className="lg:col-span-2 border border-line">
-          {lastCommit && (
-            <div className="border-b border-line bg-elevated">
-              <CommitRow commit={lastCommit} />
+      {/* Empty repo state */}
+      {isEmpty && (
+        <div className="border border-dashed border-line p-10 text-center mt-4">
+          <p className="font-mono text-sm text-secondary mb-1">This repository is empty.</p>
+          <p className="text-xs text-muted mb-4">
+            Push an existing repository, or clone it and add files.
+          </p>
+          <div className="terminal-box max-w-md mx-auto text-left">
+            <div className="terminal-title-bar">
+              <span className="terminal-dot" style={{ background: '#f85149' }} />
+              <span className="terminal-dot" style={{ background: '#d29922' }} />
+              <span className="terminal-dot" style={{ background: '#3fb950' }} />
             </div>
-          )}
-          {treeLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Spinner size="sm" className="text-secondary" />
+            <div className="p-4 space-y-2 text-xs font-mono">
+              <p><span className="text-accent-green">$</span> <span className="text-secondary">git clone {repo.clone_url}</span></p>
+              <p><span className="text-accent-green">$</span> <span className="text-secondary">cd {repoName}</span></p>
+              <p><span className="text-accent-green">$</span> <span className="text-secondary">echo "# {repoName}" &gt; README.md</span></p>
+              <p><span className="text-accent-green">$</span> <span className="text-secondary">git add . && git commit -m "Initial commit"</span></p>
+              <p><span className="text-accent-green">$</span> <span className="text-secondary">git push origin {repo.default_branch}</span></p>
             </div>
-          ) : (
-            <FileTree
-              owner={owner}
-              repo={repoName}
-              ref={currentBranch}
-              entries={tree?.entries ?? []}
-            />
-          )}
+          </div>
         </div>
+      )}
 
-        {/* README */}
-        <div className="lg:col-span-3">
-          {readme ? (
-            <div className="border border-line">
-              <div className="px-4 py-2.5 border-b border-line bg-elevated">
-                <span className="text-xs font-mono text-secondary">README.md</span>
+      {/* File tree + README */}
+      {!isEmpty && (
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+          <div className="lg:col-span-2 border border-line">
+            {lastCommit && (
+              <div className="border-b border-line bg-elevated">
+                <CommitRow commit={lastCommit} />
               </div>
-              <div className="p-5 markdown-body">
-                <ReactMarkdown>{atob(readme.content)}</ReactMarkdown>
+            )}
+            {treeLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Spinner size="sm" className="text-secondary" />
               </div>
-            </div>
-          ) : (
-            <div className="border border-dashed border-line p-8 text-center">
-              <p className="text-sm text-secondary font-mono">No README.md found</p>
-              <p className="text-xs text-muted mt-1">
-                Add a README.md to help people understand your project.
-              </p>
-            </div>
-          )}
+            ) : (
+              <FileTree
+                owner={owner}
+                repo={repoName}
+                gitRef={currentBranch}
+                entries={tree?.entries ?? []}
+              />
+            )}
+          </div>
+
+          <div className="lg:col-span-3">
+            {readme ? (
+              <div className="border border-line">
+                <div className="px-4 py-2.5 border-b border-line bg-elevated">
+                  <span className="text-xs font-mono text-secondary">README.md</span>
+                </div>
+                <div className="p-5 markdown-body">
+                  <ReactMarkdown>{atob(readme.content)}</ReactMarkdown>
+                </div>
+              </div>
+            ) : (
+              <div className="border border-dashed border-line p-8 text-center">
+                <p className="text-sm text-secondary font-mono">No README.md found</p>
+                <p className="text-xs text-muted mt-1">
+                  Add a README.md to help people understand your project.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

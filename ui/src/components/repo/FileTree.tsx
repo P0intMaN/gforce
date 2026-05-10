@@ -5,23 +5,26 @@ import { Spinner } from '../ui/Spinner'
 import { getTree } from '../../api/git'
 import type { TreeEntry } from '../../types/api'
 
+// NOTE: the prop is named `gitRef` (not `ref`) because `ref` is a reserved
+// React prop name — passing ref={string} causes a "string refs" crash in
+// React 18 Strict Mode that takes down the entire component tree.
+
 interface FileTreeProps {
   owner: string
   repo: string
-  ref: string
+  gitRef: string
   entries: TreeEntry[]
-  basePath?: string
 }
 
 interface FileNodeProps {
   entry: TreeEntry
   owner: string
   repo: string
-  ref: string
+  gitRef: string
   depth: number
 }
 
-function FileNode({ entry, owner, repo, ref, depth }: FileNodeProps) {
+function FileNode({ entry, owner, repo, gitRef, depth }: FileNodeProps) {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [children, setChildren] = useState<TreeEntry[] | null>(null)
@@ -29,20 +32,20 @@ function FileNode({ entry, owner, repo, ref, depth }: FileNodeProps) {
 
   const handleClick = useCallback(async () => {
     if (entry.type === 'blob') {
-      navigate(`/${owner}/${repo}/blob/${ref}/${entry.path}`)
+      navigate(`/${owner}/${repo}/blob/${gitRef}/${entry.path}`)
       return
     }
     if (!open && children === null) {
       setLoading(true)
       try {
-        const tree = await getTree(owner, repo, ref, entry.path)
+        const tree = await getTree(owner, repo, gitRef, entry.path)
         setChildren(tree.entries ?? [])
       } finally {
         setLoading(false)
       }
     }
     setOpen(!open)
-  }, [entry, open, children, owner, repo, ref, navigate])
+  }, [entry, open, children, owner, repo, gitRef, navigate])
 
   const isDir = entry.type === 'tree'
   const indent = depth * 12
@@ -72,9 +75,7 @@ function FileNode({ entry, owner, repo, ref, depth }: FileNodeProps) {
             <FileText size={14} className="text-secondary flex-shrink-0" />
           </>
         )}
-        <span className={isDir ? 'text-primary' : 'text-primary'}>
-          {entry.name}
-        </span>
+        <span className="text-primary">{entry.name}</span>
         {loading && <Spinner size="xs" className="ml-auto text-secondary" />}
       </button>
 
@@ -86,7 +87,7 @@ function FileNode({ entry, owner, repo, ref, depth }: FileNodeProps) {
               entry={child}
               owner={owner}
               repo={repo}
-              ref={ref}
+              gitRef={gitRef}
               depth={depth + 1}
             />
           ))}
@@ -101,7 +102,7 @@ function FileNode({ entry, owner, repo, ref, depth }: FileNodeProps) {
   )
 }
 
-export function FileTree({ owner, repo, ref, entries }: FileTreeProps) {
+export function FileTree({ owner, repo, gitRef, entries }: FileTreeProps) {
   if (entries.length === 0) {
     return (
       <div className="py-8 text-center text-sm text-muted">
@@ -110,7 +111,6 @@ export function FileTree({ owner, repo, ref, entries }: FileTreeProps) {
     )
   }
 
-  // Sort: directories first, then files
   const sorted = [...entries].sort((a, b) => {
     if (a.type === b.type) return a.name.localeCompare(b.name)
     return a.type === 'tree' ? -1 : 1
@@ -124,7 +124,7 @@ export function FileTree({ owner, repo, ref, entries }: FileTreeProps) {
           entry={entry}
           owner={owner}
           repo={repo}
-          ref={ref}
+          gitRef={gitRef}
           depth={0}
         />
       ))}
