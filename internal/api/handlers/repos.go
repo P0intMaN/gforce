@@ -152,6 +152,28 @@ func (h *RepoHandler) createRepositoryCR(ctx context.Context, username, userID s
 	}
 }
 
+// List handles GET /api/v1/user/repos — lists all repositories owned by the authenticated user.
+func (h *RepoHandler) List(w http.ResponseWriter, r *http.Request) {
+	owner, ok := middleware.UserFromContext(r.Context())
+	if !ok {
+		response.Unauthorized(w)
+		return
+	}
+
+	limit, offset := parsePagination(r)
+	repos, err := h.store.ListReposByOwner(r.Context(), owner.ID, limit, offset)
+	if err != nil {
+		response.InternalError(w, h.logger, err)
+		return
+	}
+
+	out := make([]dto.RepoResponse, 0, len(repos))
+	for _, rp := range repos {
+		out = append(out, repoToDTO(rp, owner, h.baseURL))
+	}
+	response.JSON(w, http.StatusOK, out)
+}
+
 // Get handles GET /api/v1/repos/:owner/:repo — public for public repos, auth for private.
 func (h *RepoHandler) Get(w http.ResponseWriter, r *http.Request) {
 	repo, ownerUser, err := h.loadRepo(r)
