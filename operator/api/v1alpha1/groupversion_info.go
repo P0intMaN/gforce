@@ -1,6 +1,6 @@
 // Package v1alpha1 contains the v1alpha1 API group types for the gforce operator.
 //
-// +groupName=gforce.dev
+// +groupName=gforce.io
 package v1alpha1
 
 import (
@@ -9,12 +9,12 @@ import (
 )
 
 var (
-	// GroupVersion is the group and version used to register the types in this package.
-	GroupVersion = schema.GroupVersion{Group: "gforce.dev", Version: "v1alpha1"}
+	// GroupVersion is the API group/version used to register these types.
+	GroupVersion = schema.GroupVersion{Group: "gforce.io", Version: "v1alpha1"}
 
-	// SchemeBuilder is used to add functions for the types in this package to a scheme.
+	// SchemeBuilder registers types with a runtime.Scheme.
 	SchemeBuilder = &scheme.Builder{GroupVersion: GroupVersion}
 
-	// AddToScheme registers the types in this package with a runtime.Scheme.
+	// AddToScheme registers all types in this package with a runtime.Scheme.
 	AddToScheme = SchemeBuilder.AddToScheme
 )

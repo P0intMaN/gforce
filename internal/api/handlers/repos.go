@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/go-chi/chi/v5"
+	gforcev1alpha1 "github.com/gforce/gforce/operator/api/v1alpha1"
 	"github.com/gforce/gforce/internal/api/dto"
 	"github.com/gforce/gforce/internal/api/middleware"
 	"github.com/gforce/gforce/internal/api/response"
@@ -16,20 +18,31 @@ import (
 	"github.com/gforce/gforce/internal/models"
 	"github.com/gforce/gforce/internal/store"
 	"github.com/gforce/gforce/pkg/gitutil"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8sclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"go.uber.org/zap"
 )
 
 // RepoHandler handles HTTP requests for repository resources.
 type RepoHandler struct {
-	store       store.Store
-	gitRootPath string
-	baseURL     string
-	logger      *zap.Logger
+	store        store.Store
+	gitRootPath  string
+	baseURL      string
+	logger       *zap.Logger
+	k8sClient    k8sclient.Client // nil when running outside Kubernetes
+	k8sNamespace string
 }
 
-// NewRepoHandler creates a RepoHandler.
-func NewRepoHandler(s store.Store, gitRootPath, baseURL string, logger *zap.Logger) *RepoHandler {
-	return &RepoHandler{store: s, gitRootPath: gitRootPath, baseURL: baseURL, logger: logger}
+// NewRepoHandler creates a RepoHandler. k8sClient may be nil — CR creation is skipped in that case.
+func NewRepoHandler(s store.Store, gitRootPath, baseURL string, logger *zap.Logger, k8sClient k8sclient.Client, k8sNamespace string) *RepoHandler {
+	return &RepoHandler{
+		store:        s,
+		gitRootPath:  gitRootPath,
+		baseURL:      baseURL,
+		logger:       logger,
+		k8sClient:    k8sClient,
+		k8sNamespace: k8sNamespace,
+	}
 }
 
 // Create handles POST /api/v1/user/repos — requires auth.
@@ -94,8 +107,49 @@ func (h *RepoHandler) Create(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Best-effort: create the Repository CR so the operator can reconcile it.
+	// Non-fatal — the repo already exists in the DB and on disk.
+	h.createRepositoryCR(r.Context(), owner.Username, owner.ID.String(), repo, req)
+
 	h.logger.Info("repository created", zap.String("repo_id", repo.ID.String()), zap.String("full_name", owner.Username+"/"+req.Name))
 	response.JSON(w, http.StatusCreated, repoToDTO(repo, owner, h.baseURL))
+}
+
+// createRepositoryCR creates the Kubernetes Repository CR for the operator to manage.
+// Failures are logged and not propagated to the caller.
+func (h *RepoHandler) createRepositoryCR(ctx context.Context, username, userID string, repo *models.Repository, req dto.CreateRepoRequest) {
+	if h.k8sClient == nil {
+		return
+	}
+
+	crName := fmt.Sprintf("%s-%s", username, repo.Name)
+	cr := &gforcev1alpha1.Repository{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      crName,
+			Namespace: h.k8sNamespace,
+		},
+		Spec: gforcev1alpha1.RepositorySpec{
+			OwnerRef: gforcev1alpha1.OwnerReference{
+				Username: username,
+				UserID:   userID,
+			},
+			Name:          repo.Name,
+			Description:   req.Description,
+			IsPrivate:     repo.IsPrivate,
+			DefaultBranch: repo.DefaultBranch,
+		},
+	}
+
+	if err := h.k8sClient.Create(ctx, cr); err != nil {
+		h.logger.Warn("creating Repository CR",
+			zap.String("cr_name", crName),
+			zap.Error(err),
+		)
+	} else {
+		h.logger.Info("Repository CR created",
+			zap.String("cr_name", crName),
+		)
+	}
 }
 
 // Get handles GET /api/v1/repos/:owner/:repo — public for public repos, auth for private.

@@ -1,17 +1,30 @@
-BINARY      := gforce
-IMAGE       := ghcr.io/gforce/gforce
-TAG         ?= dev
-GOPATH_BIN  := $(shell go env GOPATH)/bin
+BINARY        := gforce
+IMAGE         := ghcr.io/gforce/gforce
+TAG           ?= dev
+GOPATH_BIN    := $(shell go env GOPATH)/bin
+LOCALBIN      := $(shell pwd)/bin
+ENVTEST_K8S   := 1.29.x
+CONTROLLER_GEN := $(GOPATH_BIN)/controller-gen
+ENVTEST        := go run sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
 
-.PHONY: build test lint docker-build generate migrate dev help
+$(LOCALBIN):
+	mkdir -p $(LOCALBIN)
+
+.PHONY: build test test-integration lint docker-build generate manifests migrate dev envtest-assets help
 
 ## build: Compile all Go binaries.
 build:
 	go build ./...
 
-## test: Run the full test suite with race detection.
+## test: Run unit tests with race detection.
 test:
-	go test ./... -race -count=1 -timeout=120s
+	go test ./... -race -count=1 -timeout=120s \
+		--ignore=./operator/controllers/...
+
+## test-integration: Run operator controller tests (requires envtest binaries).
+test-integration: envtest-assets
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S) --bin-dir $(LOCALBIN) -p path)" \
+		go test ./operator/controllers/... -v -race -timeout=5m
 
 ## lint: Run golangci-lint.
 lint:
@@ -21,22 +34,29 @@ lint:
 docker-build:
 	docker build -t $(IMAGE):$(TAG) .
 
-## generate: Regenerate CRD manifests and DeepCopy methods via controller-gen.
+## generate: Regenerate DeepCopy methods from kubebuilder markers.
 generate:
-	$(GOPATH_BIN)/controller-gen \
-		object:headerFile="hack/boilerplate.go.txt" \
-		rbac:roleName=gforce-operator \
-		crd \
-		paths="./operator/..." \
-		output:crd:artifacts:config=charts/gforce/templates/crds
+	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./operator/api/..."
 
-## migrate: Apply database migrations.
+## manifests: Generate CRD and RBAC manifests.
+manifests:
+	$(CONTROLLER_GEN) \
+		crd \
+		rbac:roleName=gforce-operator-role \
+		paths="./operator/..." \
+		output:crd:artifacts:config=config/crd/bases
+
+## migrate: Apply database migrations against GFORCE_DB_DSN.
 migrate:
 	@echo "Applying migrations from internal/store/migrations/"
 	@for f in internal/store/migrations/*.sql; do \
 		echo "  Applying $$f ..."; \
 		psql "$$GFORCE_DB_DSN" -f "$$f"; \
 	done
+
+## envtest-assets: Download envtest binaries for controller integration tests.
+envtest-assets: $(LOCALBIN)
+	$(ENVTEST) use $(ENVTEST_K8S) --bin-dir $(LOCALBIN) -p path
 
 ## dev: Run the server locally with live reload via air.
 dev:
