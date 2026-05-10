@@ -76,7 +76,7 @@ type Commit struct {
 type CreateUserParams struct {
 	Username     string
 	Email        string
-	PasswordHash string
+	PasswordHash string  `json:"-"` // never serialised
 	DisplayName  *string
 	AvatarURL    *string
 	Bio          *string
