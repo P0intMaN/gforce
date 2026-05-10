@@ -22,7 +22,8 @@ const testBaseURL = "http://localhost:8080"
 func newRepoHandler(t *testing.T, st store.Store) *handlers.RepoHandler {
 	t.Helper()
 	dir := t.TempDir()
-	return handlers.NewRepoHandler(st, dir, testBaseURL, zap.NewNop())
+	// nil k8sClient: K8s CR creation is skipped in unit tests.
+	return handlers.NewRepoHandler(st, dir, testBaseURL, zap.NewNop(), nil, "")
 }
 
 // ── Create ────────────────────────────────────────────────────────────────────

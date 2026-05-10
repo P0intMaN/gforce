@@ -98,6 +98,9 @@ func (s *testStore) ListReposByOwner(_ context.Context, _ uuid.UUID, _, _ int) (
 func (s *testStore) ListPublicRepos(_ context.Context, _, _ int) ([]*models.Repository, error) {
 	return nil, nil
 }
+func (s *testStore) ListPublicReposByOwner(_ context.Context, _ uuid.UUID, _, _ int) ([]*models.Repository, error) {
+	return nil, nil
+}
 func (s *testStore) UpdateRepo(_ context.Context, _ uuid.UUID, _ models.UpdateRepoParams) (*models.Repository, error) {
 	return nil, nil
 }

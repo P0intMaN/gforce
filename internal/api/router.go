@@ -13,6 +13,7 @@ import (
 	"github.com/gforce/gforce/internal/gitserver"
 	"github.com/gforce/gforce/internal/store"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	k8sclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"go.uber.org/zap"
 )
 
@@ -24,6 +25,9 @@ type RouterConfig struct {
 	BaseURL        string
 	AllowedOrigins []string
 	Logger         *zap.Logger
+	// K8sClient is optional — when non-nil, Repository CRs are created on repo creation.
+	K8sClient    k8sclient.Client
+	K8sNamespace string
 }
 
 // NewRouter constructs the full Chi router with all middleware and routes registered.
@@ -53,7 +57,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 
 	// ── Handlers ─────────────────────────────────────────────────────────────
 	userH := handlers.NewUserHandler(cfg.Store, cfg.AuthService, cfg.Logger)
-	repoH := handlers.NewRepoHandler(cfg.Store, cfg.GitRootPath, cfg.BaseURL, cfg.Logger)
+	repoH := handlers.NewRepoHandler(cfg.Store, cfg.GitRootPath, cfg.BaseURL, cfg.Logger, cfg.K8sClient, cfg.K8sNamespace)
 	gitContentH := handlers.NewGitContentHandler(cfg.Store, cfg.BaseURL, cfg.Logger)
 	gitSmartHTTP := gitserver.NewGitHandler(cfg.Store, tv, cfg.GitRootPath, cfg.Logger)
 

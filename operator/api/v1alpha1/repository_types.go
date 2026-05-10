@@ -5,69 +5,103 @@ import (
 )
 
 // RepositoryPhase is the lifecycle phase of a Repository resource.
-// +kubebuilder:validation:Enum=Pending;Ready;Failed
+//
+// +kubebuilder:validation:Enum=Pending;Ready;Failed;Deleting
 type RepositoryPhase string
 
 const (
-	// RepositoryPhasePending means the repository has been accepted but not yet initialised on disk.
+	// RepositoryPhasePending means the resource has been accepted but not yet initialised.
 	RepositoryPhasePending RepositoryPhase = "Pending"
-	// RepositoryPhaseReady means the bare git repository is initialised and serving.
+	// RepositoryPhaseReady means the bare git repository is initialised and in sync with the DB.
 	RepositoryPhaseReady RepositoryPhase = "Ready"
 	// RepositoryPhaseFailed means the controller encountered an unrecoverable error.
 	RepositoryPhaseFailed RepositoryPhase = "Failed"
+	// RepositoryPhaseDeleting means the deletion workflow is in progress.
+	RepositoryPhaseDeleting RepositoryPhase = "Deleting"
 )
 
-// RepositorySpec defines the desired state of a Repository.
-type RepositorySpec struct {
-	// OwnerRef identifies the gforce User that owns this repository.
+// Condition type constants for Repository resources.
+const (
+	ConditionReady          = "Ready"
+	ConditionDiskReady      = "DiskReady"
+	ConditionDatabaseSynced = "DatabaseSynced"
+)
+
+// OwnerReference identifies the GForce user who owns a repository.
+type OwnerReference struct {
+	// Username is the GForce username of the owning user.
 	// +kubebuilder:validation:Required
-	OwnerRef string `json:"ownerRef"`
+	Username string `json:"username"`
 
-	// IsPrivate controls whether the repository is accessible only to its owner.
-	// +kubebuilder:default=false
-	IsPrivate bool `json:"isPrivate,omitempty"`
+	// UserID is the UUID of the user in the GForce database.
+	// +kubebuilder:validation:Required
+	UserID string `json:"userID"`
+}
 
-	// DefaultBranch is the branch that HEAD points to after initialisation.
-	// +kubebuilder:default="main"
-	// +kubebuilder:validation:MinLength=1
-	DefaultBranch string `json:"defaultBranch,omitempty"`
+// RepositorySpec defines the desired state of a Repository.
+//
+// +kubebuilder:validation:XValidation:rule="self.name == oldSelf.name",message="name is immutable after creation"
+type RepositorySpec struct {
+	// OwnerRef references the GForce user who owns this repository.
+	// +kubebuilder:validation:Required
+	OwnerRef OwnerReference `json:"ownerRef"`
 
-	// Description is an optional human-readable summary of the repository's purpose.
-	// +kubebuilder:validation:MaxLength=512
+	// Name is the repository name in slug format.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Pattern=`^[a-z0-9][a-z0-9\-]*[a-z0-9]$`
+	// +kubebuilder:validation:MaxLength=100
+	Name string `json:"name"`
+
+	// Description is an optional human-readable description.
+	// +kubebuilder:validation:MaxLength=500
 	Description string `json:"description,omitempty"`
 
-	// StorageClass is the Kubernetes StorageClass to use when provisioning a
-	// PersistentVolume for this repository. Defaults to the cluster default.
-	// +optional
+	// IsPrivate controls whether the repository is visible only to its owner.
+	IsPrivate bool `json:"isPrivate,omitempty"`
+
+	// DefaultBranch is the branch that HEAD points to.
+	// +kubebuilder:default=main
+	DefaultBranch string `json:"defaultBranch,omitempty"`
+
+	// StorageClass is the Kubernetes StorageClass used when provisioning the PVC.
+	// +kubebuilder:validation:Optional
 	StorageClass string `json:"storageClass,omitempty"`
+
+	// DiskPath is the absolute path on the storage volume.
+	// Set by the operator on first reconcile; immutable thereafter.
+	// +kubebuilder:validation:Optional
+	DiskPath string `json:"diskPath,omitempty"`
 }
 
 // RepositoryStatus reports the observed state of a Repository.
 type RepositoryStatus struct {
-	// Phase is the lifecycle phase of the repository.
+	// Phase is the current lifecycle phase.
 	Phase RepositoryPhase `json:"phase,omitempty"`
 
-	// DiskPath is the absolute path on the storage volume where the bare git
-	// repository lives. Set by the controller once the repo is initialised.
+	// DiskPath is the on-disk location of the bare git repository.
 	DiskPath string `json:"diskPath,omitempty"`
 
-	// Conditions represents the latest available observations of the repository's state.
+	// DatabaseID is the UUID of the corresponding record in the GForce database.
+	DatabaseID string `json:"databaseID,omitempty"`
+
+	// ObservedGeneration is the metadata.generation this status was computed from.
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
+	// Conditions follows standard Kubernetes condition conventions.
 	// +listType=map
 	// +listMapKey=type
-	// +patchStrategy=merge
-	// +patchMergeKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
-// Repository is a Kubernetes CRD that represents a gforce-managed git repository.
+// Repository is a Kubernetes CRD representing a GForce-managed git repository.
 //
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Namespaced,shortName=repo,categories=gforce
-// +kubebuilder:printcolumn:name="Owner",type=string,JSONPath=".spec.ownerRef"
-// +kubebuilder:printcolumn:name="Private",type=boolean,JSONPath=".spec.isPrivate"
-// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=".status.phase"
-// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:printcolumn:name="Owner",type=string,JSONPath=`.spec.ownerRef.username`
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=='Ready')].status`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 type Repository struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
