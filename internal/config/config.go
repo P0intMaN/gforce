@@ -77,6 +77,10 @@ func Load() (*Config, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
+	// AutomaticEnv does not resolve nested struct keys during Unmarshal.
+	// BindEnv pre-registers each mapping so it is evaluated deterministically.
+	bindEnvs(v)
+
 	setDefaults(v)
 
 	var cfg Config
@@ -89,6 +93,30 @@ func Load() (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+// bindEnvs explicitly maps every config key to its GFORCE_* env var.
+// This is required because Viper's AutomaticEnv does not work reliably
+// with nested structs during Unmarshal.
+func bindEnvs(v *viper.Viper) {
+	pairs := [][2]string{
+		{"server.port", "GFORCE_SERVER_PORT"},
+		{"server.base_url", "GFORCE_SERVER_BASE_URL"},
+		{"server.allowed_origins", "GFORCE_SERVER_ALLOWED_ORIGINS"},
+		{"server.read_timeout_secs", "GFORCE_SERVER_READ_TIMEOUT_SECS"},
+		{"server.write_timeout_secs", "GFORCE_SERVER_WRITE_TIMEOUT_SECS"},
+		{"db.dsn", "GFORCE_DB_DSN"},
+		{"db.max_open_conns", "GFORCE_DB_MAX_OPEN_CONNS"},
+		{"db.max_idle_conns", "GFORCE_DB_MAX_IDLE_CONNS"},
+		{"git.storage_path", "GFORCE_GIT_STORAGE_PATH"},
+		{"auth.jwt_secret", "GFORCE_AUTH_JWT_SECRET"},
+		{"auth.token_ttl_minutes", "GFORCE_AUTH_TOKEN_TTL_MINUTES"},
+		{"log.level", "GFORCE_LOG_LEVEL"},
+		{"kubernetes.namespace", "GFORCE_KUBERNETES_NAMESPACE"},
+	}
+	for _, p := range pairs {
+		_ = v.BindEnv(p[0], p[1])
+	}
 }
 
 func setDefaults(v *viper.Viper) {
@@ -114,10 +142,6 @@ func validate(cfg *Config) error {
 	if cfg.Auth.JWTSecret == "" {
 		missing = append(missing, "GFORCE_AUTH_JWT_SECRET")
 	}
-	if cfg.Git.StoragePath == "" {
-		missing = append(missing, "GFORCE_GIT_STORAGE_PATH")
-	}
-
 	if len(missing) > 0 {
 		return fmt.Errorf("required environment variables not set: %s", strings.Join(missing, ", "))
 	}

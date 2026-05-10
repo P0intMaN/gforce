@@ -32,6 +32,7 @@ Thumbs.db
 
 # Generated files
 charts/gforce/templates/crds/
+data/
 
 # Coverage
 coverage.out
