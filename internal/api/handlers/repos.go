@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/gforce/gforce/internal/gitserver"
 	"github.com/gforce/gforce/internal/models"
 	"github.com/gforce/gforce/internal/store"
 	"go.uber.org/zap"
@@ -25,7 +26,8 @@ func NewRepoHandler(s store.RepoStore, gitRootPath string, logger *zap.Logger) *
 	return &RepoHandler{store: s, gitRootPath: gitRootPath, logger: logger}
 }
 
-// Create handles POST /api/v1/repos — creates a new repository record.
+// Create handles POST /api/v1/repos — creates a new repository record and
+// initialises the bare git repository on disk.
 func (h *RepoHandler) Create(w http.ResponseWriter, r *http.Request) {
 	claims, ok := claimsFromRequest(r)
 	if !ok {
@@ -57,25 +59,60 @@ func (h *RepoHandler) Create(w http.ResponseWriter, r *http.Request) {
 		req.DefaultBranch = "main"
 	}
 
+	diskPath := filepath.Join(h.gitRootPath, claims.Username, req.Name+".git")
+
+	// Ensure the owner directory exists before touching the database.
+	if err := gitserver.EnsureOwnerDir(h.gitRootPath, claims.Username); err != nil {
+		h.logger.Error("creating owner directory",
+			zap.String("owner", claims.Username),
+			zap.Error(err),
+		)
+		respondError(w, http.StatusInternalServerError, "could not create repository")
+		return
+	}
+
+	// Persist the repository record. On name conflict, return 409 immediately
+	// before touching the filesystem.
 	repo, err := h.store.CreateRepo(r.Context(), models.CreateRepoParams{
 		OwnerID:       ownerID,
 		Name:          req.Name,
 		Description:   req.Description,
 		IsPrivate:     req.IsPrivate,
 		DefaultBranch: req.DefaultBranch,
-		DiskPath:      filepath.Join(h.gitRootPath, claims.Username, req.Name+".git"),
+		DiskPath:      diskPath,
 	})
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {
 			respondError(w, http.StatusConflict, "repository with that name already exists")
 			return
 		}
-		h.logger.Error("creating repository", zap.String("name", req.Name), zap.Error(err))
+		h.logger.Error("creating repository record", zap.String("name", req.Name), zap.Error(err))
 		respondError(w, http.StatusInternalServerError, "could not create repository")
 		return
 	}
 
-	h.logger.Info("repository created", zap.String("repo_id", repo.ID.String()), zap.String("name", repo.Name))
+	// Initialise the bare git repository. If this fails, clean up the DB record
+	// so the user can retry without hitting a conflict.
+	if err := gitserver.InitBareRepo(diskPath); err != nil {
+		h.logger.Error("initialising bare repository",
+			zap.String("path", diskPath),
+			zap.Error(err),
+		)
+		if delErr := h.store.DeleteRepo(r.Context(), repo.ID); delErr != nil {
+			h.logger.Error("cleaning up orphaned repository record",
+				zap.String("repo_id", repo.ID.String()),
+				zap.Error(delErr),
+			)
+		}
+		respondError(w, http.StatusInternalServerError, "could not initialise repository")
+		return
+	}
+
+	h.logger.Info("repository created",
+		zap.String("repo_id", repo.ID.String()),
+		zap.String("name", repo.Name),
+		zap.String("disk_path", diskPath),
+	)
 	respondJSON(w, http.StatusCreated, repo)
 }
 
