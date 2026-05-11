@@ -10,7 +10,7 @@ import (
 
 // Response is the top-level JSON envelope. Every API response is wrapped in this.
 type Response[T any] struct {
-	Data  T      `json:"data,omitempty"`
+	Data  T      `json:"data"`
 	Error string `json:"error,omitempty"`
 	Meta  *Meta  `json:"meta,omitempty"`
 }
