@@ -321,6 +321,17 @@ func (h *RepoHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		h.logger.Warn("removing repo from disk", zap.String("path", repo.DiskPath), zap.Error(err))
 	}
 
+	actorID := caller.ID
+	repoName := repo.Name
+	ownerUsername := caller.Username
+	go func() {
+		_ = h.store.RecordEvent(context.Background(), store.RecordEventParams{
+			ActorID:   actorID,
+			EventType: "repo.delete",
+			Payload:   map[string]interface{}{"repo_name": repoName, "full_name": ownerUsername + "/" + repoName},
+		})
+	}()
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
