@@ -58,6 +58,13 @@ export default {
         panel: '0 0 0 1px #2a2d35',
         dropdown: '0 8px 24px rgba(0,0,0,0.5), 0 0 0 1px #2a2d35',
       },
+      // Disable Tailwind's default blue ring so it can never override our green focus style
+      ringColor: {
+        DEFAULT: 'transparent',
+      },
+      ringWidth: {
+        DEFAULT: '0px',
+      },
     },
   },
   plugins: [],
