@@ -23,7 +23,7 @@ export function LoginForm() {
       storeLogin(tokenData.token, { id: '', username: '', email: '', display_name: '', avatar_url: '', bio: '', is_admin: false, created_at: '' })
       const user = await getCurrentUser()
       storeLogin(tokenData.token, user)
-      navigate('/')
+      navigate('/', { replace: true })
     } catch {
       setError('Invalid credentials. Check your username/email and password.')
     } finally {

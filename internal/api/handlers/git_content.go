@@ -140,6 +140,19 @@ func (h *GitContentHandler) GetBlob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// ?raw=true serves the decoded file bytes directly — used by the Raw button in the UI.
+	if r.URL.Query().Get("raw") == "true" {
+		contentType := "text/plain; charset=utf-8"
+		// Serve binary files as octet-stream so the browser downloads them.
+		if !isTextContent(content) {
+			contentType = "application/octet-stream"
+		}
+		w.Header().Set("Content-Type", contentType)
+		w.Header().Set("Cache-Control", "no-cache")
+		_, _ = w.Write(content)
+		return
+	}
+
 	response.JSON(w, http.StatusOK, dto.BlobResponse{
 		Path:     filePath,
 		Content:  base64.StdEncoding.EncodeToString(content),
@@ -305,6 +318,22 @@ func (h *GitContentHandler) openAndAuthorize(
 	}
 
 	return dbRepo, ownerUser, gitRepo, true
+}
+
+// isTextContent reports whether b looks like UTF-8 text by checking for
+// null bytes (the simplest binary-content heuristic).
+func isTextContent(b []byte) bool {
+	const sampleSize = 512
+	n := len(b)
+	if n > sampleSize {
+		n = sampleSize
+	}
+	for _, c := range b[:n] {
+		if c == 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // resolveCommit resolves a ref string (branch, tag, or full SHA) to a commit object.

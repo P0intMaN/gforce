@@ -1,12 +1,13 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { Plus, Terminal, GitBranch, Box } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../hooks/useAuth'
+import { useAuthStore } from '../store/auth'
 import { getMyRepos } from '../api/repos'
 import { RepoCard } from '../components/repo/RepoCard'
 import { Button } from '../components/ui/Button'
-import { Spinner } from '../components/ui/Spinner'
+import { Spinner, FullPageSpinner } from '../components/ui/Spinner'
 import type { Repository } from '../types/api'
 
 function HeroSection() {
@@ -173,6 +174,20 @@ function AuthenticatedHome() {
 }
 
 export function HomePage() {
+  const [isRehydrated, setIsRehydrated] = useState(
+    () => useAuthStore.persist.hasHydrated()
+  )
   const { isAuthenticated } = useAuth()
+
+  useEffect(() => {
+    if (isRehydrated) return
+    const unsub = useAuthStore.persist.onFinishHydration(() => setIsRehydrated(true))
+    // re-check synchronously in case hydration completed between render and effect
+    if (useAuthStore.persist.hasHydrated()) setIsRehydrated(true)
+    return unsub
+  }, [isRehydrated])
+
+  if (!isRehydrated) return <FullPageSpinner />
+
   return isAuthenticated ? <AuthenticatedHome /> : <HeroSection />
 }

@@ -27,7 +27,6 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'gforce-auth',
       storage: createJSONStorage(() => localStorage),
-      // Only persist the token — user is re-fetched on app load.
       partialize: (state) => ({ token: state.token }),
     }
   )

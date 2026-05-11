@@ -29,13 +29,12 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             id={inputId}
             className={cn(
               'w-full bg-base border border-line text-primary placeholder:text-muted',
-              'h-8 px-3 text-sm outline-none',
-              'focus:border-accent-blue focus:ring-1 focus:ring-accent-blue',
+              'h-8 px-3 text-sm focus:outline-none focus:ring-0',
               'transition-colors duration-100',
               'disabled:opacity-50 disabled:cursor-not-allowed',
               monospace && 'font-mono',
               inputPrefix && 'pl-8',
-              error && 'border-accent-red focus:border-accent-red focus:ring-accent-red',
+              error && 'border-accent-red',
               className
             )}
             {...props}
@@ -70,8 +69,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
           id={inputId}
           className={cn(
             'w-full bg-base border border-line text-primary placeholder:text-muted',
-            'px-3 py-2 text-sm outline-none resize-none',
-            'focus:border-accent-blue focus:ring-1 focus:ring-accent-blue',
+            'px-3 py-2 text-sm focus:outline-none focus:ring-0 resize-none',
             'transition-colors duration-100',
             error && 'border-accent-red',
             className

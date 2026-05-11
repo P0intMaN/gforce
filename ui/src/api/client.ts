@@ -7,7 +7,7 @@ export const apiClient = axios.create({
   timeout: 15_000,
 })
 
-// Attach Bearer token from Zustand store on every request.
+// Read the token fresh on every request — never capture it at interceptor setup time.
 apiClient.interceptors.request.use((config) => {
   const token = useAuthStore.getState().token
   if (token) {
@@ -16,14 +16,17 @@ apiClient.interceptors.request.use((config) => {
   return config
 })
 
-// On 401, clear auth state and redirect to login.
+// On 401:
+// - If this was the /user rehydration probe → don't redirect (caller handles it).
+// - Any other 401 → clear session and go to login.
 apiClient.interceptors.response.use(
   (res) => res,
   (error) => {
     if (axios.isAxiosError(error) && error.response?.status === 401) {
-      useAuthStore.getState().logout()
-      // Hard redirect — React Router may not be available here.
-      if (!window.location.pathname.startsWith('/login')) {
+      const url: string = error.config?.url ?? ''
+      const isUserProbe = url === '/user' || url.endsWith('/user')
+      if (!isUserProbe && !window.location.pathname.startsWith('/login')) {
+        useAuthStore.getState().logout()
         window.location.href = '/login'
       }
     }
