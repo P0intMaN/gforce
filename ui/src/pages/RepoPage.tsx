@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { Star, GitFork, Lock, Globe, GitBranch } from 'lucide-react'
+import { Star, GitFork, Lock, Globe, GitBranch, Settings } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { useQuery } from '@tanstack/react-query'
+import { useAuth } from '../hooks/useAuth'
 import { useRepo } from '../hooks/useRepo'
 import { useFileTree } from '../hooks/useFileTree'
 import { getBlob, getCommits } from '../api/git'
@@ -23,6 +24,7 @@ export function RepoPage() {
     '*'?: string
   }>()
   const [branch, setBranch] = useState<string | null>(null)
+  const { user } = useAuth()
 
   const { data: repo, isLoading: repoLoading, error: repoError } = useRepo(owner, repoName)
 
@@ -121,6 +123,15 @@ export function RepoPage() {
             {commits?.length ?? 0} commit{commits?.length !== 1 ? 's' : ''}
           </Link>
           <CloneButton cloneUrl={repo.clone_url} />
+          {user && user.id === repo.owner.id && (
+            <Link
+              to={`/${owner}/${repoName}/settings`}
+              className="flex items-center gap-1.5 h-7 px-3 text-xs border border-line text-secondary hover:text-primary hover:border-[#3a3d45] transition-colors no-underline"
+            >
+              <Settings size={12} />
+              Settings
+            </Link>
+          )}
         </div>
       </div>
 

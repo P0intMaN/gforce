@@ -3,6 +3,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -130,6 +131,17 @@ const (
 		FROM ssh_keys WHERE user_id = $1 ORDER BY created_at DESC`
 
 	sqlDeleteSSHKey = `DELETE FROM ssh_keys WHERE id = $1 AND user_id = $2`
+
+	sqlRecordEvent = `
+		INSERT INTO activity_events (actor_id, event_type, repo_id, payload)
+		VALUES ($1, $2, $3, $4)`
+
+	sqlListUserActivity = `
+		SELECT id, actor_id, event_type, repo_id, payload, created_at
+		FROM activity_events
+		WHERE actor_id = $1
+		ORDER BY created_at DESC
+		LIMIT $2`
 )
 
 // --- DB (pool-backed) -------------------------------------------------------
@@ -654,4 +666,78 @@ func collectSSHKeys(rows pgx.Rows) ([]*models.SSHKey, error) {
 		keys = append(keys, k)
 	}
 	return keys, rows.Err()
+}
+
+// --- ActivityStore methods (DB) ---------------------------------------------
+
+// RecordEvent implements store.ActivityStore.
+func (db *DB) RecordEvent(ctx context.Context, p store.RecordEventParams) error {
+	payload, err := json.Marshal(p.Payload)
+	if err != nil {
+		return fmt.Errorf("store.RecordEvent: marshaling payload: %w", err)
+	}
+	_, err = db.pool.Exec(ctx, sqlRecordEvent, p.ActorID, p.EventType, p.RepoID, payload)
+	if err != nil {
+		return fmt.Errorf("store.RecordEvent: %w", err)
+	}
+	return nil
+}
+
+// ListUserActivity implements store.ActivityStore.
+func (db *DB) ListUserActivity(ctx context.Context, actorID uuid.UUID, limit int) ([]*models.ActivityEvent, error) {
+	rows, err := db.pool.Query(ctx, sqlListUserActivity, actorID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("store.ListUserActivity: %w", err)
+	}
+	defer rows.Close()
+	return collectActivityEvents(rows)
+}
+
+// --- ActivityStore methods (txStore) ----------------------------------------
+
+func (t *txStore) RecordEvent(ctx context.Context, p store.RecordEventParams) error {
+	payload, err := json.Marshal(p.Payload)
+	if err != nil {
+		return fmt.Errorf("store.RecordEvent: marshaling payload: %w", err)
+	}
+	_, err = t.tx.Exec(ctx, sqlRecordEvent, p.ActorID, p.EventType, p.RepoID, payload)
+	if err != nil {
+		return fmt.Errorf("store.RecordEvent: %w", err)
+	}
+	return nil
+}
+
+func (t *txStore) ListUserActivity(ctx context.Context, actorID uuid.UUID, limit int) ([]*models.ActivityEvent, error) {
+	rows, err := t.tx.Query(ctx, sqlListUserActivity, actorID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("store.ListUserActivity: %w", err)
+	}
+	defer rows.Close()
+	return collectActivityEvents(rows)
+}
+
+// collectActivityEvents scans pgx.Rows into []*models.ActivityEvent.
+func collectActivityEvents(rows pgx.Rows) ([]*models.ActivityEvent, error) {
+	var events []*models.ActivityEvent
+	for rows.Next() {
+		var e models.ActivityEvent
+		var payloadRaw []byte
+		if err := rows.Scan(
+			&e.ID, &e.ActorID, &e.EventType, &e.RepoID, &payloadRaw, &e.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("store: scanning activity_event: %w", err)
+		}
+		if len(payloadRaw) > 0 {
+			if err := json.Unmarshal(payloadRaw, &e.Payload); err != nil {
+				e.Payload = map[string]interface{}{}
+			}
+		} else {
+			e.Payload = map[string]interface{}{}
+		}
+		events = append(events, &e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: iterating activity_events: %w", err)
+	}
+	return events, nil
 }

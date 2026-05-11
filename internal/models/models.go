@@ -116,3 +116,13 @@ type CreateSSHKeyParams struct {
 	PublicKey   string
 	Fingerprint string
 }
+
+// ActivityEvent records a user action for the activity feed.
+type ActivityEvent struct {
+	ID        uuid.UUID              `json:"id"`
+	ActorID   uuid.UUID              `json:"actor_id"`
+	EventType string                 `json:"event_type"`
+	RepoID    *uuid.UUID             `json:"repo_id,omitempty"`
+	Payload   map[string]interface{} `json:"payload"`
+	CreatedAt time.Time              `json:"created_at"`
+}

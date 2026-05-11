@@ -9,6 +9,9 @@ import { NewRepoPage } from './pages/NewRepoPage'
 import { RepoPage } from './pages/RepoPage'
 import { RepoFilePage } from './pages/RepoFilePage'
 import { RepoCommitsPage } from './pages/RepoCommitsPage'
+import { RepoSettingsPage } from './pages/RepoSettingsPage'
+import { SettingsPage } from './pages/SettingsPage'
+import { SSHKeysPage } from './pages/SSHKeysPage'
 import { UserProfilePage } from './pages/UserProfilePage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { useAuthRehydration, useIsRehydrated } from './hooks/useAuth'
@@ -55,7 +58,11 @@ export function App() {
           <Route path="login" element={<LoginPage />} />
           <Route path="register" element={<RegisterPage />} />
           <Route path="new" element={<NewRepoPage />} />
+          {/* User settings */}
+          <Route path="settings" element={<SettingsPage />} />
+          <Route path="settings/keys" element={<SSHKeysPage />} />
           {/* Repo — specific routes BEFORE the catch-all /:owner/:repo */}
+          <Route path=":owner/:repo/settings" element={<RepoSettingsPage />} />
           <Route path=":owner/:repo/blob/:ref/*" element={<RepoFilePage />} />
           <Route path=":owner/:repo/tree/:ref/*" element={<RepoPage />} />
           <Route path=":owner/:repo/commits/:ref" element={<RepoCommitsPage />} />

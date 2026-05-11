@@ -125,7 +125,7 @@ func (h *GitHandler) dispatch(w http.ResponseWriter, r *http.Request, owner, rep
 	if isInfoRefs {
 		h.handleInfoRefs(w, r, repo, service)
 	} else {
-		h.handleServiceRPC(w, r, repo, service)
+		h.handleServiceRPC(w, r, repo, service, user)
 	}
 }
 
@@ -163,7 +163,8 @@ func (h *GitHandler) handleInfoRefs(w http.ResponseWriter, r *http.Request, repo
 }
 
 // handleServiceRPC handles POST for git-upload-pack and git-receive-pack.
-func (h *GitHandler) handleServiceRPC(w http.ResponseWriter, r *http.Request, repo *models.Repository, service string) {
+// user may be nil for public read (upload-pack on a public repo).
+func (h *GitHandler) handleServiceRPC(w http.ResponseWriter, r *http.Request, repo *models.Repository, service string, user *models.User) {
 	want := "application/x-" + service + "-request"
 	if ct := r.Header.Get("Content-Type"); ct != want {
 		http.Error(w, fmt.Sprintf("expected Content-Type %q, got %q", want, ct), http.StatusUnsupportedMediaType)
@@ -204,6 +205,19 @@ func (h *GitHandler) handleServiceRPC(w http.ResponseWriter, r *http.Request, re
 			zap.String("stderr", stderrBuf.String()),
 			zap.Error(err),
 		)
+	} else if service == "git-receive-pack" && user != nil {
+		// Fire-and-forget — record the push event after a successful receive-pack.
+		repoID := repo.ID
+		actorID := user.ID
+		repoName := repo.Name
+		go func() {
+			_ = h.store.RecordEvent(context.Background(), store.RecordEventParams{
+				ActorID:   actorID,
+				EventType: "git.push",
+				RepoID:    &repoID,
+				Payload:   map[string]interface{}{"repo": repoName},
+			})
+		}()
 	}
 }
 

@@ -151,6 +151,12 @@ func (m *mockStore) BeginTx(_ context.Context) (store.Store, error) { return m, 
 func (m *mockStore) Commit() error                                    { return nil }
 func (m *mockStore) Rollback() error                                  { return nil }
 func (m *mockStore) Ping(_ context.Context) error                     { return nil }
+func (m *mockStore) RecordEvent(_ context.Context, _ store.RecordEventParams) error {
+	return nil
+}
+func (m *mockStore) ListUserActivity(_ context.Context, _ uuid.UUID, _ int) ([]*models.ActivityEvent, error) {
+	return nil, nil
+}
 
 // --- test fixtures ---
 

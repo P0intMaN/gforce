@@ -2,13 +2,15 @@ import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { Plus, Terminal, GitBranch, Box } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
+import { formatDistanceToNow } from 'date-fns'
 import { useAuth } from '../hooks/useAuth'
 import { useAuthStore } from '../store/auth'
 import { getMyRepos } from '../api/repos'
+import { getMyActivity } from '../api/activity'
 import { RepoCard } from '../components/repo/RepoCard'
 import { Button } from '../components/ui/Button'
 import { Spinner, FullPageSpinner } from '../components/ui/Spinner'
-import type { Repository } from '../types/api'
+import type { Repository, ActivityEvent } from '../types/api'
 
 function HeroSection() {
   const navigate = useNavigate()
@@ -33,25 +35,11 @@ function HeroSection() {
           </Button>
         </div>
       </div>
-
-      {/* Feature cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-3xl w-full">
         {[
-          {
-            icon: <GitBranch size={20} className="text-accent-blue" />,
-            title: '$ git clone',
-            desc: 'Full Git smart-HTTP server. Clone, push, fetch. Standard git tooling, no plugins.',
-          },
-          {
-            icon: <Box size={20} className="text-accent-purple" />,
-            title: 'kind: Repository',
-            desc: 'Every repo is a Kubernetes CRD. Operator reconciles state. GitOps from day one.',
-          },
-          {
-            icon: <Terminal size={20} className="text-accent-green" />,
-            title: '/metrics',
-            desc: 'Prometheus endpoint built in. Observe every operation. Structured logs with zap.',
-          },
+          { icon: <GitBranch size={20} className="text-accent-blue" />, title: '$ git clone', desc: 'Full Git smart-HTTP server. Clone, push, fetch. Standard git tooling, no plugins.' },
+          { icon: <Box size={20} className="text-accent-purple" />, title: 'kind: Repository', desc: 'Every repo is a Kubernetes CRD. Operator reconciles state. GitOps from day one.' },
+          { icon: <Terminal size={20} className="text-accent-green" />, title: '/metrics', desc: 'Prometheus endpoint built in. Observe every operation. Structured logs with zap.' },
         ].map((card) => (
           <div key={card.title} className="terminal-box p-4">
             <div className="flex items-center gap-2 mb-3">
@@ -66,13 +54,33 @@ function HeroSection() {
   )
 }
 
+function eventLabel(e: ActivityEvent): { cmd: string; detail: string } {
+  const payload = e.payload
+  switch (e.event_type) {
+    case 'repo.create': return { cmd: '$ repo.create', detail: String(payload.full_name ?? payload.repo_name ?? '') }
+    case 'repo.delete': return { cmd: '$ repo.delete', detail: String(payload.repo_name ?? '') }
+    case 'git.push':    return { cmd: '$ git push', detail: String(payload.repo ?? '') }
+    case 'git.clone':   return { cmd: '$ git clone', detail: String(payload.repo ?? '') }
+    case 'repo.star':   return { cmd: '$ repo.star', detail: String(payload.repo_name ?? '') }
+    default:            return { cmd: `$ ${e.event_type}`, detail: '' }
+  }
+}
+
 function AuthenticatedHome() {
   const navigate = useNavigate()
+  const { isAuthenticated } = useAuth()
   const [filter, setFilter] = useState('')
 
   const { data: repos = [], isLoading } = useQuery<Repository[]>({
     queryKey: ['my-repos'],
     queryFn: () => getMyRepos(),
+  })
+
+  const { data: activity = [] } = useQuery<ActivityEvent[]>({
+    queryKey: ['my-activity'],
+    queryFn: () => getMyActivity(10),
+    enabled: isAuthenticated,
+    refetchInterval: 30_000,
   })
 
   const filtered = repos.filter(
@@ -83,31 +91,23 @@ function AuthenticatedHome() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-6 flex gap-6">
-      {/* Left column — repos */}
+      {/* Left — repo list */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-mono text-sm text-primary font-semibold">Repositories</h2>
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => navigate('/new')}
-            className="font-mono"
-          >
-            <Plus size={13} />
-            New
+          <Button variant="primary" size="sm" onClick={() => navigate('/new')} className="font-mono">
+            <Plus size={13} /> New
           </Button>
         </div>
-
         <div className="mb-3">
           <input
             type="text"
             placeholder="Find a repository..."
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            className="w-full h-8 bg-base border border-line text-primary placeholder:text-muted font-mono text-xs px-3 outline-none focus:border-accent-blue transition-colors"
+            className="w-full h-8 bg-base border border-line text-primary placeholder:text-muted font-mono text-xs px-3"
           />
         </div>
-
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <Spinner size="md" className="text-secondary" />
@@ -118,26 +118,17 @@ function AuthenticatedHome() {
               {repos.length === 0 ? 'No repositories yet.' : 'No results.'}
             </p>
             {repos.length === 0 && (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => navigate('/new')}
-                className="mt-4 font-mono"
-              >
+              <Button variant="primary" size="sm" onClick={() => navigate('/new')} className="mt-4 font-mono">
                 Create your first repository
               </Button>
             )}
           </div>
         ) : (
-          <div>
-            {filtered.map((repo) => (
-              <RepoCard key={repo.id} repo={repo} />
-            ))}
-          </div>
+          <div>{filtered.map((repo) => <RepoCard key={repo.id} repo={repo} />)}</div>
         )}
       </div>
 
-      {/* Right column — terminal activity */}
+      {/* Right — activity terminal */}
       <div className="w-72 flex-shrink-0 hidden lg:block">
         <div className="terminal-box sticky top-20">
           <div className="terminal-title-bar">
@@ -147,24 +138,25 @@ function AuthenticatedHome() {
             <span className="ml-2 text-xs font-mono text-muted">activity</span>
           </div>
           <div className="p-3 space-y-3">
-            {repos.slice(0, 4).map((repo) => (
-              <div key={repo.id} className="text-xs font-mono">
-                <p className="text-accent-green">$ repo.view</p>
-                <p className="text-secondary pl-2">
-                  →{' '}
-                  <Link
-                    to={`/${repo.owner.username}/${repo.name}`}
-                    className="text-accent-blue hover:underline"
-                  >
-                    {repo.full_name}
-                  </Link>
-                </p>
-              </div>
-            ))}
-            {repos.length === 0 && (
-              <p className="text-xs font-mono text-muted">
-                {'// no activity yet'}
-              </p>
+            {activity.length === 0 ? (
+              <p className="text-xs font-mono text-muted">$ no recent activity</p>
+            ) : (
+              activity.map((e) => {
+                const { cmd, detail } = eventLabel(e)
+                return (
+                  <div key={e.id} className="text-xs font-mono">
+                    <p className="text-accent-green">{cmd}</p>
+                    {detail && (
+                      <p className="text-secondary pl-2">
+                        → <Link to={`/${detail}`} className="text-accent-blue hover:underline">{detail}</Link>
+                      </p>
+                    )}
+                    <p className="text-muted pl-2 text-2xs">
+                      {formatDistanceToNow(new Date(e.created_at), { addSuffix: true })}
+                    </p>
+                  </div>
+                )
+              })
             )}
           </div>
         </div>
@@ -182,12 +174,10 @@ export function HomePage() {
   useEffect(() => {
     if (isRehydrated) return
     const unsub = useAuthStore.persist.onFinishHydration(() => setIsRehydrated(true))
-    // re-check synchronously in case hydration completed between render and effect
     if (useAuthStore.persist.hasHydrated()) setIsRehydrated(true)
     return unsub
   }, [isRehydrated])
 
   if (!isRehydrated) return <FullPageSpinner />
-
   return isAuthenticated ? <AuthenticatedHome /> : <HeroSection />
 }

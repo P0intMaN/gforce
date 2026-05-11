@@ -29,15 +29,23 @@
   padding: 0;
 }
 
-/* Kill browser appearance defaults on all form controls */
+/* Remove browser native chrome from form inputs only.
+   Tailwind's preflight already handles buttons — adding appearance:none
+   to button kills browser cursor and visual weight cues. */
 input,
 textarea,
-select,
-button {
+select {
   -webkit-appearance: none;
   -moz-appearance: none;
   appearance: none;
-  outline: none !important;
+}
+
+/* Ensure interactive elements always show pointer cursor */
+button,
+[role="button"],
+label[for],
+a {
+  cursor: pointer;
 }
 
 html {

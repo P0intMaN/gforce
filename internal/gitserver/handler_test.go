@@ -120,6 +120,12 @@ func (s *testStore) BeginTx(_ context.Context) (store.Store, error)       { retu
 func (s *testStore) Commit() error                                         { return nil }
 func (s *testStore) Rollback() error                                       { return nil }
 func (s *testStore) Ping(_ context.Context) error                          { return nil }
+func (s *testStore) RecordEvent(_ context.Context, _ store.RecordEventParams) error {
+	return nil
+}
+func (s *testStore) ListUserActivity(_ context.Context, _ uuid.UUID, _ int) ([]*models.ActivityEvent, error) {
+	return nil, nil
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
