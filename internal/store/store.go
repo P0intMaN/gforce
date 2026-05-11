@@ -67,12 +67,30 @@ type SSHKeyStore interface {
 	DeleteSSHKey(ctx context.Context, id uuid.UUID, userID uuid.UUID) error
 }
 
+// RecordEventParams carries the fields needed to write an activity event.
+type RecordEventParams struct {
+	ActorID   uuid.UUID
+	EventType string
+	RepoID    *uuid.UUID
+	Payload   map[string]interface{}
+}
+
+// ActivityStore records and retrieves user activity events.
+type ActivityStore interface {
+	// RecordEvent writes one activity event. Never returns an error to callers
+	// that use it fire-and-forget; implementations should log and swallow errors.
+	RecordEvent(ctx context.Context, params RecordEventParams) error
+	// ListUserActivity returns the most recent limit events for actorID.
+	ListUserActivity(ctx context.Context, actorID uuid.UUID, limit int) ([]*models.ActivityEvent, error)
+}
+
 // Store is the top-level dependency that composes all sub-stores and adds
 // transaction support.
 type Store interface {
 	UserStore
 	RepoStore
 	SSHKeyStore
+	ActivityStore
 
 	// BeginTx starts a database transaction and returns a Store whose methods
 	// run within that transaction. Commit or Rollback must be called on the

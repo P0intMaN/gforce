@@ -111,6 +111,17 @@ func (h *RepoHandler) Create(w http.ResponseWriter, r *http.Request) {
 	// Non-fatal — the repo already exists in the DB and on disk.
 	h.createRepositoryCR(r.Context(), owner.Username, owner.ID.String(), repo, req)
 
+	// Fire-and-forget activity event — never blocks the HTTP response.
+	repoID := repo.ID
+	go func() {
+		_ = h.store.RecordEvent(context.Background(), store.RecordEventParams{
+			ActorID:   owner.ID,
+			EventType: "repo.create",
+			RepoID:    &repoID,
+			Payload:   map[string]interface{}{"repo_name": repo.Name, "full_name": owner.Username + "/" + repo.Name},
+		})
+	}()
+
 	h.logger.Info("repository created", zap.String("repo_id", repo.ID.String()), zap.String("full_name", owner.Username+"/"+req.Name))
 	response.JSON(w, http.StatusCreated, repoToDTO(repo, owner, h.baseURL))
 }

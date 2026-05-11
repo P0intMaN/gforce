@@ -98,3 +98,12 @@ export interface CreateRepoInput {
   init: boolean
   default_branch: string
 }
+
+export interface ActivityEvent {
+  id: string
+  actor_id: string
+  event_type: string
+  repo_id?: string
+  payload: Record<string, unknown>
+  created_at: string
+}

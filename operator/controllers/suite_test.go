@@ -298,6 +298,12 @@ func (s *memStore) BeginTx(_ context.Context) (store.Store, error) { return s, n
 func (s *memStore) Commit() error                                    { return nil }
 func (s *memStore) Rollback() error                                  { return nil }
 func (s *memStore) Ping(_ context.Context) error                     { return nil }
+func (s *memStore) RecordEvent(_ context.Context, _ store.RecordEventParams) error {
+	return nil
+}
+func (s *memStore) ListUserActivity(_ context.Context, _ uuid.UUID, _ int) ([]*models.ActivityEvent, error) {
+	return nil, nil
+}
 
 // compile-time check
 var _ store.Store = (*memStore)(nil)

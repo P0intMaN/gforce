@@ -63,6 +63,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	userH := handlers.NewUserHandler(cfg.Store, cfg.AuthService, cfg.Logger)
 	repoH := handlers.NewRepoHandler(cfg.Store, cfg.GitRootPath, cfg.BaseURL, cfg.Logger, cfg.K8sClient, cfg.K8sNamespace)
 	gitContentH := handlers.NewGitContentHandler(cfg.Store, cfg.BaseURL, cfg.Logger)
+	activityH := handlers.NewActivityHandler(cfg.Store, cfg.Logger)
 	gitSmartHTTP := gitserver.NewGitHandler(cfg.Store, tv, cfg.GitRootPath, cfg.Logger)
 
 	// ── Infra routes ─────────────────────────────────────────────────────────
@@ -90,6 +91,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 			r.Patch("/user", userH.UpdateProfile)
 			r.Get("/user/repos", repoH.List)
 			r.Post("/user/repos", repoH.Create)
+			r.Get("/user/activity", activityH.ListMyActivity)
 			r.Post("/user/keys", userH.AddSSHKey)
 			r.Get("/user/keys", userH.ListSSHKeys)
 			r.Delete("/user/keys/{id}", userH.DeleteSSHKey)

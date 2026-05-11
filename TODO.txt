@@ -1,0 +1,41 @@
+Updated "Add Later" Master List
+Since you asked me to keep tracking everything:
+Auth & Session
+
+Token rehydration on page reload / back navigation
+Session expiry handling gracefully (show "session expired, please login" not blank 401)
+Remember me / persistent sessions
+OAuth2 / OIDC login (Google, GitHub as identity providers)
+Two-factor authentication
+Personal Access Tokens (PATs) with gf_ prefix for git operations
+
+UI — Missing Pages
+
+User profile page (/:username)
+User settings page
+Organization pages
+Repository settings page
+Search results page
+
+UI — Missing Functionality
+
+Activity feed (needs backend event sourcing — every repo create/push stored)
+Breadcrumb navigation working correctly
+Stars / forking UI
+Repository topics/tags
+Watching a repository
+
+Git Features
+
+Empty repo clone shows warning — initial commit flow needs fixing
+SSH key auth for git operations (currently HTTP only)
+LFS support
+Submodule support
+
+Platform
+
+Operator running in-cluster as a Deployment (not locally)
+In-cluster PVC for repo storage (not local disk)
+Admission webhooks for CRD validation
+Multi-tenancy / organizations
+Per-org storage quotas

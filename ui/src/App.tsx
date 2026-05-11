@@ -1,4 +1,6 @@
+import { useEffect, useRef } from 'react'
 import { Routes, Route } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { AppShell } from './components/layout/AppShell'
 import { HomePage } from './pages/HomePage'
 import { LoginPage } from './pages/LoginPage'
@@ -7,24 +9,64 @@ import { NewRepoPage } from './pages/NewRepoPage'
 import { RepoPage } from './pages/RepoPage'
 import { RepoFilePage } from './pages/RepoFilePage'
 import { RepoCommitsPage } from './pages/RepoCommitsPage'
+import { RepoSettingsPage } from './pages/RepoSettingsPage'
+import { SettingsPage } from './pages/SettingsPage'
+import { SSHKeysPage } from './pages/SSHKeysPage'
+import { UserProfilePage } from './pages/UserProfilePage'
 import { NotFoundPage } from './pages/NotFoundPage'
-import { useAuthRehydration } from './hooks/useAuth'
+import { useAuthRehydration, useIsRehydrated } from './hooks/useAuth'
+import { useAuthStore } from './store/auth'
+import { Spinner } from './components/ui/Spinner'
+
+function AuthGate({ children }: { children: React.ReactNode }) {
+  const isRehydrated = useIsRehydrated()
+  if (!isRehydrated) {
+    return (
+      <div className="min-h-screen bg-base flex items-center justify-center">
+        <Spinner size="md" className="text-secondary" />
+      </div>
+    )
+  }
+  return <>{children}</>
+}
 
 export function App() {
   useAuthRehydration()
 
+  const queryClient = useQueryClient()
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const prevAuthRef = useRef(isAuthenticated)
+
+  useEffect(() => {
+    if (prevAuthRef.current && !isAuthenticated) {
+      queryClient.clear()
+    }
+    prevAuthRef.current = isAuthenticated
+  }, [isAuthenticated, queryClient])
+
   return (
-    <Routes>
-      <Route element={<AppShell />}>
-        <Route index element={<HomePage />} />
-        <Route path="login" element={<LoginPage />} />
-        <Route path="register" element={<RegisterPage />} />
-        <Route path="new" element={<NewRepoPage />} />
-        <Route path=":owner/:repo" element={<RepoPage />} />
-        <Route path=":owner/:repo/blob/:ref/*" element={<RepoFilePage />} />
-        <Route path=":owner/:repo/commits/:ref" element={<RepoCommitsPage />} />
-        <Route path="*" element={<NotFoundPage />} />
-      </Route>
-    </Routes>
+    <AuthGate>
+      <Routes>
+        <Route element={<AppShell />}>
+          <Route index element={<HomePage />} />
+          {/* Auth */}
+          <Route path="login" element={<LoginPage />} />
+          <Route path="register" element={<RegisterPage />} />
+          <Route path="new" element={<NewRepoPage />} />
+          {/* User settings */}
+          <Route path="settings" element={<SettingsPage />} />
+          <Route path="settings/keys" element={<SSHKeysPage />} />
+          {/* Repo — specific routes BEFORE catch-alls */}
+          <Route path=":owner/:repo/settings" element={<RepoSettingsPage />} />
+          <Route path=":owner/:repo/blob/:ref/*" element={<RepoFilePage />} />
+          <Route path=":owner/:repo/tree/:ref/*" element={<RepoPage />} />
+          <Route path=":owner/:repo/commits/:ref" element={<RepoCommitsPage />} />
+          <Route path=":owner/:repo" element={<RepoPage />} />
+          {/* User profile — AFTER all specific routes */}
+          <Route path=":username" element={<UserProfilePage />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Route>
+      </Routes>
+    </AuthGate>
   )
 }

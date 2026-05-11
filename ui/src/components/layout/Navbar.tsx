@@ -121,11 +121,25 @@ export function Navbar() {
                   Your profile
                 </Link>
                 <Link
-                  to="/repos"
+                  to={`/${user?.username}`}
                   className="flex items-center px-3 py-1.5 text-sm text-primary hover:bg-elevated no-underline transition-colors"
                   onClick={() => setUserMenuOpen(false)}
                 >
                   Your repositories
+                </Link>
+                <Link
+                  to="/settings"
+                  className="flex items-center px-3 py-1.5 text-sm text-primary hover:bg-elevated no-underline transition-colors"
+                  onClick={() => setUserMenuOpen(false)}
+                >
+                  Settings
+                </Link>
+                <Link
+                  to="/settings/keys"
+                  className="flex items-center px-3 py-1.5 text-sm text-primary hover:bg-elevated no-underline transition-colors"
+                  onClick={() => setUserMenuOpen(false)}
+                >
+                  SSH Keys
                 </Link>
                 <div className="border-t border-line-muted mt-1 pt-1">
                   <button
