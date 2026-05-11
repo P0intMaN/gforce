@@ -2,13 +2,10 @@ import { useState, useRef, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Anvil, Plus, Bell, ChevronDown, Search } from 'lucide-react'
 import { useAuthStore } from '../../store/auth'
-import { useIsRehydrated } from '../../hooks/useAuth'
 import { Avatar } from '../ui/Avatar'
-import { Spinner } from '../ui/Spinner'
 
 export function Navbar() {
   const { user, isAuthenticated, logout } = useAuthStore()
-  const isRehydrated = useIsRehydrated()
   const navigate = useNavigate()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [plusMenuOpen, setPlusMenuOpen] = useState(false)
@@ -34,16 +31,9 @@ export function Navbar() {
   }
 
   // Right-side content depends on rehydration + auth state
+  // App.tsx gates on isReady before rendering, so auth state is always
+  // known by the time Navbar renders — no rehydration check needed here.
   function renderRight() {
-    if (!isRehydrated) {
-      // Still reading localStorage — show a neutral placeholder
-      return (
-        <div className="flex items-center h-7 px-2">
-          <Spinner size="xs" className="text-muted" />
-        </div>
-      )
-    }
-
     if (!isAuthenticated) {
       return (
         <div className="flex items-center gap-2">

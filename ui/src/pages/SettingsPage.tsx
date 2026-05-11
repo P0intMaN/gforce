@@ -11,7 +11,7 @@ export function SettingsPage() {
   const { isAuthenticated, user } = useAuth()
   const navigate = useNavigate()
   const qc = useQueryClient()
-  const { setUser } = useAuthStore()
+  const { login, token } = useAuthStore()
 
   if (!isAuthenticated) {
     navigate('/login', { replace: true })
@@ -39,7 +39,7 @@ export function SettingsPage() {
       avatar_url: avatarUrl || undefined,
     }),
     onSuccess: (updated) => {
-      setUser(updated)
+      if (token) login(token, updated)
       qc.invalidateQueries({ queryKey: ['current-user'] })
       setSaveOk(true)
       setSaveError(null)

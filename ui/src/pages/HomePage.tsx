@@ -1,15 +1,14 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { Plus, Terminal, GitBranch, Box } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
-import { useAuth } from '../hooks/useAuth'
 import { useAuthStore } from '../store/auth'
 import { getMyRepos } from '../api/repos'
 import { getMyActivity } from '../api/activity'
 import { RepoCard } from '../components/repo/RepoCard'
 import { Button } from '../components/ui/Button'
-import { Spinner, FullPageSpinner } from '../components/ui/Spinner'
+import { Spinner } from '../components/ui/Spinner'
 import type { Repository, ActivityEvent } from '../types/api'
 
 function HeroSection() {
@@ -68,7 +67,7 @@ function eventLabel(e: ActivityEvent): { cmd: string; detail: string } {
 
 function AuthenticatedHome() {
   const navigate = useNavigate()
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated } = useAuthStore()
   const [filter, setFilter] = useState('')
 
   const { data: repos = [], isLoading } = useQuery<Repository[]>({
@@ -166,18 +165,8 @@ function AuthenticatedHome() {
 }
 
 export function HomePage() {
-  const [isRehydrated, setIsRehydrated] = useState(
-    () => useAuthStore.persist.hasHydrated()
-  )
-  const { isAuthenticated } = useAuth()
-
-  useEffect(() => {
-    if (isRehydrated) return
-    const unsub = useAuthStore.persist.onFinishHydration(() => setIsRehydrated(true))
-    if (useAuthStore.persist.hasHydrated()) setIsRehydrated(true)
-    return unsub
-  }, [isRehydrated])
-
-  if (!isRehydrated) return <FullPageSpinner />
+  // App.tsx has already gated on isReady — by the time this renders,
+  // auth state is definitively known from localStorage + server validation.
+  const { isAuthenticated } = useAuthStore()
   return isAuthenticated ? <AuthenticatedHome /> : <HeroSection />
 }

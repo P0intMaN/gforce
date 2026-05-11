@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { login } from '../../api/auth'
-import { getCurrentUser } from '../../api/auth'
+import { login, getCurrentUser } from '../../api/auth'
 import { useAuthStore } from '../../store/auth'
 import { Button } from '../ui/Button'
 
@@ -19,8 +18,6 @@ export function LoginForm() {
     setLoading(true)
     try {
       const tokenData = await login(loginVal, password)
-      // Store token, then fetch user profile
-      storeLogin(tokenData.token, { id: '', username: '', email: '', display_name: '', avatar_url: '', bio: '', is_admin: false, created_at: '' })
       const user = await getCurrentUser()
       storeLogin(tokenData.token, user)
       navigate('/', { replace: true })

@@ -7,7 +7,7 @@ export const apiClient = axios.create({
   timeout: 15_000,
 })
 
-// Read the token fresh on every request — never capture it at interceptor setup time.
+// Read the token fresh on every request — never capture it at setup time.
 apiClient.interceptors.request.use((config) => {
   const token = useAuthStore.getState().token
   if (token) {
@@ -17,15 +17,16 @@ apiClient.interceptors.request.use((config) => {
 })
 
 // On 401:
-// - If this was the /user rehydration probe → don't redirect (caller handles it).
-// - Any other 401 → clear session and go to login.
+// - /user endpoint is the token-validation probe — caller handles it, no redirect.
+// - All other 401s → clear session and hard-redirect to /login.
 apiClient.interceptors.response.use(
   (res) => res,
   (error) => {
     if (axios.isAxiosError(error) && error.response?.status === 401) {
+      // config.url is relative to baseURL, so it's "/user" not "/api/v1/user"
       const url: string = error.config?.url ?? ''
-      const isUserProbe = url === '/user' || url.endsWith('/user')
-      if (!isUserProbe && !window.location.pathname.startsWith('/login')) {
+      const isUserEndpoint = url === '/user' || url.endsWith('/user')
+      if (!isUserEndpoint && !window.location.pathname.startsWith('/login')) {
         useAuthStore.getState().logout()
         window.location.href = '/login'
       }

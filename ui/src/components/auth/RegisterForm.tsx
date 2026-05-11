@@ -30,7 +30,7 @@ export function RegisterForm() {
       const tokenData = await login(username, password)
       const user = await getCurrentUser()
       storeLogin(tokenData.token, user)
-      navigate('/')
+      navigate('/', { replace: true })
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
         const axErr = err as { response?: { data?: { error?: string } } }
