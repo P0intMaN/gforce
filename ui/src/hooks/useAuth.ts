@@ -1,26 +1,51 @@
-import { useEffect } from 'react'
-import { useAuthStore, useIsRehydrated } from '../store/auth'
+import { useEffect, useState } from 'react'
+import { useAuthStore } from '../store/auth'
 import { getCurrentUser } from '../api/auth'
 
 /**
- * Validates the persisted token against the server on every app load.
- * Must be called at the root of the component tree.
+ * Tracks whether Zustand's persist middleware has finished reading
+ * the auth token from localStorage.
  *
- * Flow:
- *  1. Zustand rehydrates token from localStorage (sync, near-instant).
- *  2. isRehydrated flips to true.
- *  3. If token present and user not yet loaded → probe GET /user.
- *  4. Success → populate user, isAuthenticated = true.
- *  5. Failure (401 / network) → logout() + redirect to /login.
+ * Uses the official Zustand v4 API:
+ *   useAuthStore.persist.hasHydrated()     — synchronous boolean
+ *   useAuthStore.persist.onFinishHydration — subscribe to completion
+ *
+ * This avoids the circular-reference trap of calling
+ * useAuthStore.setState() from inside onRehydrateStorage while the
+ * store variable is still being assigned.
+ */
+export function useIsRehydrated(): boolean {
+  const [hydrated, setHydrated] = useState<boolean>(
+    () => useAuthStore.persist.hasHydrated()
+  )
+
+  useEffect(() => {
+    // Subscribe first, then check — avoids the race where hydration
+    // finishes between the useState initializer and this effect running.
+    const unsubscribe = useAuthStore.persist.onFinishHydration(() => {
+      setHydrated(true)
+    })
+    if (useAuthStore.persist.hasHydrated()) {
+      setHydrated(true)
+    }
+    return unsubscribe
+  }, [])
+
+  return hydrated
+}
+
+/**
+ * Validates the persisted token against the server on every app load.
+ * Must be called inside AuthGate so hydration is guaranteed before it runs.
  */
 export function useAuthRehydration() {
   const { token, user, setUser, logout } = useAuthStore()
-  const isRehydrated = useIsRehydrated()
+  const hydrated = useIsRehydrated()
 
   useEffect(() => {
-    if (!isRehydrated) return        // wait for localStorage read to finish
-    if (!token) return               // no token → nothing to validate
-    if (user) return                 // user already populated (just logged in)
+    if (!hydrated) return
+    if (!token) return
+    if (user) return
 
     getCurrentUser()
       .then(setUser)
@@ -28,11 +53,9 @@ export function useAuthRehydration() {
         logout()
         window.location.href = '/login'
       })
-  }, [isRehydrated, token, user, setUser, logout])
+  }, [hydrated, token, user, setUser, logout])
 }
 
 export function useAuth() {
   return useAuthStore()
 }
-
-export { useIsRehydrated }

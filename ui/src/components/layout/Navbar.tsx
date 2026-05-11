@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Anvil, Plus, Bell, ChevronDown, Search } from 'lucide-react'
-import { useAuthStore, useIsRehydrated } from '../../store/auth'
+import { useAuthStore } from '../../store/auth'
+import { useIsRehydrated } from '../../hooks/useAuth'
 import { Avatar } from '../ui/Avatar'
 import { Spinner } from '../ui/Spinner'
 
