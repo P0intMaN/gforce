@@ -57,6 +57,7 @@ export function App() {
           <Route path="new" element={<NewRepoPage />} />
           {/* Repo — specific routes BEFORE the catch-all /:owner/:repo */}
           <Route path=":owner/:repo/blob/:ref/*" element={<RepoFilePage />} />
+          <Route path=":owner/:repo/tree/:ref/*" element={<RepoPage />} />
           <Route path=":owner/:repo/commits/:ref" element={<RepoCommitsPage />} />
           <Route path=":owner/:repo" element={<RepoPage />} />
           {/* User profile — AFTER all specific two-segment routes */}

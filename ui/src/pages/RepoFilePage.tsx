@@ -36,6 +36,7 @@ export function RepoFilePage() {
           filename={filename}
           size={blob.size}
           sha={blob.sha}
+          rawUrl={`/api/v1/repos/${owner}/${repo}/blob/${ref}/${filePath}?raw=true`}
         />
       )}
     </div>
