@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { Plus, Terminal, GitBranch, Box } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
-import { useAuth } from '../hooks/useAuth'
+import { useAuth, useIsRehydrated } from '../hooks/useAuth'
 import { getMyRepos } from '../api/repos'
 import { RepoCard } from '../components/repo/RepoCard'
 import { Button } from '../components/ui/Button'
@@ -174,5 +174,11 @@ function AuthenticatedHome() {
 
 export function HomePage() {
   const { isAuthenticated } = useAuth()
+  const isRehydrated = useIsRehydrated()
+
+  // While the store is reading from localStorage we don't yet know whether
+  // the user is logged in — render nothing rather than flash the hero page.
+  if (!isRehydrated) return null
+
   return isAuthenticated ? <AuthenticatedHome /> : <HeroSection />
 }
