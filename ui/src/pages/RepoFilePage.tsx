@@ -1,7 +1,7 @@
-import { useParams, Link } from 'react-router-dom'
-import { ChevronRight } from 'lucide-react'
+import { useParams } from 'react-router-dom'
 import { useBlob } from '../hooks/useFileTree'
 import { FileViewer } from '../components/repo/FileViewer'
+import { Breadcrumb } from '../components/repo/Breadcrumb'
 import { Spinner } from '../components/ui/Spinner'
 
 export function RepoFilePage() {
@@ -10,33 +10,12 @@ export function RepoFilePage() {
   const { data: blob, isLoading, error } = useBlob(owner, repo, ref, filePath)
 
   const pathParts = filePath.split('/').filter(Boolean)
+  const filename = pathParts[pathParts.length - 1] ?? filePath
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-4">
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-1 text-sm mb-4 flex-wrap">
-        <Link to={`/${owner}/${repo}`} className="text-accent-blue hover:underline no-underline">
-          {repo}
-        </Link>
-        {pathParts.map((part, i) => {
-          const partPath = pathParts.slice(0, i + 1).join('/')
-          const isLast = i === pathParts.length - 1
-          return (
-            <span key={partPath} className="flex items-center gap-1">
-              <ChevronRight size={12} className="text-muted" />
-              {isLast ? (
-                <span className="text-primary font-medium">{part}</span>
-              ) : (
-                <Link
-                  to={`/${owner}/${repo}/tree/${ref}/${partPath}`}
-                  className="text-accent-blue hover:underline no-underline"
-                >
-                  {part}
-                </Link>
-              )}
-            </span>
-          )
-        })}
+      <div className="mb-4">
+        <Breadcrumb owner={owner} repo={repo} branch={ref} path={filePath} type="blob" />
       </div>
 
       {isLoading && (
@@ -54,9 +33,10 @@ export function RepoFilePage() {
       {blob && (
         <FileViewer
           content={blob.content}
-          filename={pathParts[pathParts.length - 1] ?? filePath}
+          filename={filename}
           size={blob.size}
           sha={blob.sha}
+          rawUrl={`/api/v1/repos/${owner}/${repo}/blob/${ref}/${filePath}?raw=true`}
         />
       )}
     </div>

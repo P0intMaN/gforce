@@ -21,10 +21,23 @@
   --syntax-red: #ff7b72;
 }
 
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+}
+
+/* Kill browser appearance defaults on all form controls */
+input,
+textarea,
+select,
+button {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  outline: none !important;
 }
 
 html {
@@ -68,11 +81,35 @@ code, pre, .font-mono {
   color: var(--text-primary);
 }
 
-/* Focus ring */
-:focus-visible {
-  outline: 2px solid var(--accent-blue);
+/* Focus — no blue anywhere, terminal green only */
+*:focus {
+  outline: none;
+}
+
+*:focus-visible {
+  outline: 1px solid var(--accent-green);
   outline-offset: 2px;
-  border-radius: 2px;
+}
+
+/* Base input style */
+input,
+textarea,
+select {
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.875rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* Focus state — green glow, no blue anywhere */
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none !important;
+  border-color: var(--accent-green) !important;
+  box-shadow: 0 0 0 3px rgba(63, 185, 80, 0.12) !important;
 }
 
 /* Link defaults */

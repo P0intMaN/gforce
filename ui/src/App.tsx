@@ -20,6 +20,7 @@ import { Spinner } from './components/ui/Spinner'
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const isRehydrated = useIsRehydrated()
+
   if (!isRehydrated) {
     return (
       <div className="min-h-screen bg-base flex items-center justify-center">
@@ -27,6 +28,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       </div>
     )
   }
+
   return <>{children}</>
 }
 
@@ -35,10 +37,13 @@ export function App() {
 
   const queryClient = useQueryClient()
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  // Track previous auth state so we detect the true→false transition.
   const prevAuthRef = useRef(isAuthenticated)
 
   useEffect(() => {
     if (prevAuthRef.current && !isAuthenticated) {
+      // User just logged out — wipe all cached API data so stale data
+      // from the previous session never shows on the next login.
       queryClient.clear()
     }
     prevAuthRef.current = isAuthenticated
@@ -56,13 +61,13 @@ export function App() {
           {/* User settings */}
           <Route path="settings" element={<SettingsPage />} />
           <Route path="settings/keys" element={<SSHKeysPage />} />
-          {/* Repo — specific routes BEFORE catch-alls */}
+          {/* Repo — specific routes BEFORE the catch-all /:owner/:repo */}
           <Route path=":owner/:repo/settings" element={<RepoSettingsPage />} />
           <Route path=":owner/:repo/blob/:ref/*" element={<RepoFilePage />} />
           <Route path=":owner/:repo/tree/:ref/*" element={<RepoPage />} />
           <Route path=":owner/:repo/commits/:ref" element={<RepoCommitsPage />} />
           <Route path=":owner/:repo" element={<RepoPage />} />
-          {/* User profile — AFTER all specific routes */}
+          {/* User profile — AFTER all specific two-segment routes */}
           <Route path=":username" element={<UserProfilePage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>

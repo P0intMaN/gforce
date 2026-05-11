@@ -8,9 +8,11 @@ interface FileViewerProps {
   filename: string
   size: number
   sha: string
+  /** When provided, the Raw button opens the actual file content. */
+  rawUrl?: string
 }
 
-export function FileViewer({ content, filename, size, sha }: FileViewerProps) {
+export function FileViewer({ content, filename, size, sha, rawUrl }: FileViewerProps) {
   const [html, setHtml] = useState<string | null>(null)
   const [lineCount, setLineCount] = useState(0)
 
@@ -32,14 +34,16 @@ export function FileViewer({ content, filename, size, sha }: FileViewerProps) {
           <span className="text-muted">{sha.slice(0, 7)}</span>
         </div>
         <div className="flex items-center gap-3">
-          <a
-            href={`/api/v1/repos/raw/${sha}`}
-            target="_blank"
-            rel="noreferrer"
-            className="text-xs text-secondary hover:text-primary transition-colors no-underline"
-          >
-            Raw
-          </a>
+          {rawUrl && (
+            <a
+              href={rawUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-secondary hover:text-primary transition-colors no-underline"
+            >
+              Raw
+            </a>
+          )}
         </div>
       </div>
 

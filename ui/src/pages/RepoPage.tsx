@@ -16,16 +16,25 @@ import { CommitRow } from '../components/repo/CommitRow'
 import type { CommitResponse, BlobResponse } from '../types/api'
 
 export function RepoPage() {
-  const { owner = '', repo: repoName = '' } = useParams<{ owner: string; repo: string }>()
+  // '*' is populated when navigating via /:owner/:repo/tree/:ref/* (subfolder clicks)
+  const { owner = '', repo: repoName = '', ref: routeRef, '*': treePath = '' } = useParams<{
+    owner: string
+    repo: string
+    ref?: string
+    '*'?: string
+  }>()
   const [branch, setBranch] = useState<string | null>(null)
   const { user } = useAuth()
 
   const { data: repo, isLoading: repoLoading, error: repoError } = useRepo(owner, repoName)
 
-  const currentBranch = branch ?? repo?.default_branch ?? 'main'
+  const currentBranch = branch ?? routeRef ?? repo?.default_branch ?? 'main'
 
   // useFileTree and commit queries — errors are expected for empty repos
-  const { data: tree, isLoading: treeLoading } = useFileTree(owner, repoName, currentBranch)
+  // Pass treePath so subfolder navigation loads the correct directory listing
+  const { data: tree, isLoading: treeLoading } = useFileTree(
+    owner, repoName, currentBranch, treePath || undefined
+  )
 
   const { data: commits } = useQuery<CommitResponse[]>({
     queryKey: ['commits', owner, repoName, currentBranch, 1],
