@@ -126,3 +126,24 @@ type ActivityEvent struct {
 	Payload   map[string]interface{} `json:"payload"`
 	CreatedAt time.Time              `json:"created_at"`
 }
+
+// PersonalAccessToken is a long-lived credential for git and API access.
+// TokenHash is stored; the raw token is returned only once at creation time.
+type PersonalAccessToken struct {
+	ID         uuid.UUID  `json:"id"`
+	UserID     uuid.UUID  `json:"user_id"`
+	Name       string     `json:"name"`
+	Prefix     string     `json:"prefix"`
+	Scopes     []string   `json:"scopes"`
+	LastUsedAt *time.Time `json:"last_used_at"`
+	ExpiresAt  *time.Time `json:"expires_at"`
+	CreatedAt  time.Time  `json:"created_at"`
+	TokenHash  string     `json:"-"` // never serialised
+}
+
+// CreatePATResponse wraps the PAT metadata with the one-time plain-text token.
+type CreatePATResponse struct {
+	PersonalAccessToken
+	Token   string `json:"token"`
+	Message string `json:"message"`
+}

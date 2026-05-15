@@ -150,7 +150,17 @@ func (m *mockStore) DeleteSSHKey(ctx context.Context, id, uid uuid.UUID) error {
 func (m *mockStore) BeginTx(_ context.Context) (store.Store, error) { return m, nil }
 func (m *mockStore) Commit() error                                    { return nil }
 func (m *mockStore) Rollback() error                                  { return nil }
-func (m *mockStore) Ping(_ context.Context) error                     { return nil }
+func (m *mockStore) Ping(_ context.Context) error { return nil }
+func (m *mockStore) CreatePAT(_ context.Context, _ store.CreatePATParams) (*models.PersonalAccessToken, string, error) {
+	return nil, "", nil
+}
+func (m *mockStore) ValidatePAT(_ context.Context, _ string) (*models.User, *models.PersonalAccessToken, error) {
+	return nil, nil, store.ErrNotFound
+}
+func (m *mockStore) ListPATs(_ context.Context, _ uuid.UUID) ([]*models.PersonalAccessToken, error) {
+	return nil, nil
+}
+func (m *mockStore) RevokePAT(_ context.Context, _, _ uuid.UUID) error { return nil }
 func (m *mockStore) RecordEvent(_ context.Context, _ store.RecordEventParams) error {
 	return nil
 }

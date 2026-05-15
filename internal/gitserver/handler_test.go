@@ -119,10 +119,18 @@ func (s *testStore) DeleteSSHKey(_ context.Context, _, _ uuid.UUID) error { retu
 func (s *testStore) BeginTx(_ context.Context) (store.Store, error)       { return nil, nil }
 func (s *testStore) Commit() error                                         { return nil }
 func (s *testStore) Rollback() error                                       { return nil }
-func (s *testStore) Ping(_ context.Context) error                          { return nil }
-func (s *testStore) RecordEvent(_ context.Context, _ store.RecordEventParams) error {
-	return nil
+func (s *testStore) Ping(_ context.Context) error { return nil }
+func (s *testStore) RecordEvent(_ context.Context, _ store.RecordEventParams) error { return nil }
+func (s *testStore) CreatePAT(_ context.Context, _ store.CreatePATParams) (*models.PersonalAccessToken, string, error) {
+	return nil, "", nil
 }
+func (s *testStore) ValidatePAT(_ context.Context, _ string) (*models.User, *models.PersonalAccessToken, error) {
+	return nil, nil, store.ErrNotFound
+}
+func (s *testStore) ListPATs(_ context.Context, _ uuid.UUID) ([]*models.PersonalAccessToken, error) {
+	return nil, nil
+}
+func (s *testStore) RevokePAT(_ context.Context, _, _ uuid.UUID) error { return nil }
 func (s *testStore) ListUserActivity(_ context.Context, _ uuid.UUID, _ int) ([]*models.ActivityEvent, error) {
 	return nil, nil
 }
