@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { Download } from 'lucide-react'
 import { CopyButton } from '../ui/CopyButton'
 
@@ -6,16 +7,32 @@ interface CloneButtonProps {
   cloneUrl: string
 }
 
+const SSH_PORT = 2222
+
+/**
+ * Derives the correct SSH clone URL from the HTTPS clone URL.
+ *
+ * For non-standard ports the ssh:// scheme is REQUIRED.
+ * The git@host:path shorthand only works for port 22.
+ *
+ * https://localhost:8080/alice/repo.git
+ *   → ssh://git@localhost:2222/alice/repo.git
+ */
+function toSshUrl(cloneUrl: string): string {
+  try {
+    const u = new URL(cloneUrl)
+    return `ssh://git@${u.hostname}:${SSH_PORT}${u.pathname}`
+  } catch {
+    return cloneUrl
+  }
+}
+
 export function CloneButton({ cloneUrl }: CloneButtonProps) {
   const [open, setOpen] = useState(false)
   const [tab, setTab] = useState<'https' | 'ssh'>('https')
   const ref = useRef<HTMLDivElement>(null)
 
-  // Derive SSH URL from HTTPS URL
-  const sshUrl = cloneUrl
-    .replace(/^https?:\/\//, 'git@')
-    .replace(/\/([^/]+)\//, ':$1/')
-
+  const sshUrl = toSshUrl(cloneUrl)
   const displayUrl = tab === 'https' ? cloneUrl : sshUrl
 
   useEffect(() => {
@@ -76,8 +93,18 @@ export function CloneButton({ cloneUrl }: CloneButtonProps) {
               <CopyButton text={displayUrl} iconOnly />
             </div>
 
+            {/* SSH note */}
+            {tab === 'ssh' && (
+              <p className="mt-2 text-2xs text-muted">
+                SSH port: {SSH_PORT} ·{' '}
+                <Link to="/settings/keys" className="text-accent-blue hover:underline no-underline">
+                  Add your SSH key
+                </Link>
+              </p>
+            )}
+
             {/* CLI hint */}
-            <div className="mt-3 p-2 bg-base border border-line-muted">
+            <div className="mt-2 p-2 bg-base border border-line-muted">
               <p className="text-2xs font-mono text-muted">
                 <span className="text-accent-green">$</span>{' '}
                 <span className="text-secondary">git clone {displayUrl}</span>
