@@ -16,6 +16,7 @@ import { RepoSettingsPage } from './pages/RepoSettingsPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { SSHKeysPage } from './pages/SSHKeysPage'
 import { UserProfilePage } from './pages/UserProfilePage'
+import { TokensPage } from './pages/TokensPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 
 export function App() {
@@ -60,6 +61,7 @@ export function App() {
         {/* User settings */}
         <Route path="settings" element={<SettingsPage />} />
         <Route path="settings/keys" element={<SSHKeysPage />} />
+        <Route path="settings/tokens" element={<TokensPage />} />
         {/* Repo — specific routes BEFORE the catch-all /:owner/:repo */}
         <Route path=":owner/:repo/settings" element={<RepoSettingsPage />} />
         <Route path=":owner/:repo/blob/:ref/*" element={<RepoFilePage />} />

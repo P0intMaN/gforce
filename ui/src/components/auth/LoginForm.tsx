@@ -18,7 +18,9 @@ export function LoginForm() {
     setLoading(true)
     try {
       const tokenData = await login(loginVal, password)
-      const user = await getCurrentUser()
+      // Pass the fresh token explicitly — it isn't in the store yet,
+      // so the interceptor would send no Authorization header otherwise.
+      const user = await getCurrentUser(tokenData.token)
       storeLogin(tokenData.token, user)
       navigate('/', { replace: true })
     } catch {

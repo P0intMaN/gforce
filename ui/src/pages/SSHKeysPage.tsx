@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Key, Trash2 } from 'lucide-react'
 import { format } from 'date-fns'
@@ -66,6 +66,15 @@ export function SSHKeysPage() {
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-6">
+      <div className="mb-4 border border-line-muted bg-elevated px-4 py-3 text-sm text-secondary">
+        💡 <strong className="text-primary">Prefer HTTPS?</strong>{' '}
+        Use a{' '}
+        <Link to="/settings/tokens" className="text-accent-blue hover:underline no-underline">
+          Personal Access Token
+        </Link>{' '}
+        as your git password. Tokens work without any SSH setup and never expire unless you set an expiration.
+      </div>
+
       <div className="mb-6">
         <h1 className="font-mono text-base text-primary font-semibold flex items-center gap-2">
           <Key size={16} /> SSH Keys

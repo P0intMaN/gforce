@@ -4,6 +4,7 @@ package store
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gforce/gforce/internal/models"
@@ -84,6 +85,33 @@ type ActivityStore interface {
 	ListUserActivity(ctx context.Context, actorID uuid.UUID, limit int) ([]*models.ActivityEvent, error)
 }
 
+// CreatePATParams carries the fields needed to create a personal access token.
+type CreatePATParams struct {
+	UserID    uuid.UUID
+	Name      string
+	Scopes    []string
+	ExpiresAt *time.Time
+}
+
+// PATStore manages personal access tokens.
+type PATStore interface {
+	// CreatePAT generates a new token, hashes it, persists the PAT, and returns
+	// the PAT record plus the raw token string. The raw token is never stored —
+	// callers must return it to the user once and discard it.
+	CreatePAT(ctx context.Context, params CreatePATParams) (*models.PersonalAccessToken, string, error)
+
+	// ValidatePAT looks up a PAT by prefix, then bcrypt-compares the full token.
+	// On success it fires an async last_used_at update and returns the owner.
+	// Never performs a full table scan — always filters by prefix first.
+	ValidatePAT(ctx context.Context, rawToken string) (*models.User, *models.PersonalAccessToken, error)
+
+	// ListPATs returns all non-expired PATs for a user. TokenHash is excluded.
+	ListPATs(ctx context.Context, userID uuid.UUID) ([]*models.PersonalAccessToken, error)
+
+	// RevokePAT deletes the PAT identified by id, scoped to userID.
+	RevokePAT(ctx context.Context, id uuid.UUID, userID uuid.UUID) error
+}
+
 // Store is the top-level dependency that composes all sub-stores and adds
 // transaction support.
 type Store interface {
@@ -91,6 +119,7 @@ type Store interface {
 	RepoStore
 	SSHKeyStore
 	ActivityStore
+	PATStore
 
 	// BeginTx starts a database transaction and returns a Store whose methods
 	// run within that transaction. Commit or Rollback must be called on the

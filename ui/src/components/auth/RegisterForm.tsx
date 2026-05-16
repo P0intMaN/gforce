@@ -28,7 +28,7 @@ export function RegisterForm() {
     try {
       await register(username, email, password)
       const tokenData = await login(username, password)
-      const user = await getCurrentUser()
+      const user = await getCurrentUser(tokenData.token)
       storeLogin(tokenData.token, user)
       navigate('/', { replace: true })
     } catch (err: unknown) {

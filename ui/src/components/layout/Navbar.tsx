@@ -135,6 +135,13 @@ export function Navbar() {
                   >
                     SSH Keys
                   </Link>
+                  <Link
+                    to="/settings/tokens"
+                    className="flex items-center px-3 py-1.5 text-sm text-primary hover:bg-elevated no-underline transition-colors"
+                    onClick={() => setUserMenuOpen(false)}
+                  >
+                    Access Tokens
+                  </Link>
                 </>
               )}
               <div className="border-t border-line-muted mt-1 pt-1">
