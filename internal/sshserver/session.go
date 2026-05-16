@@ -9,6 +9,7 @@ import (
 
 	"github.com/gforce/gforce/internal/gitserver"
 	"github.com/gforce/gforce/internal/models"
+	"github.com/gforce/gforce/internal/store"
 	"golang.org/x/crypto/ssh"
 	"go.uber.org/zap"
 )
@@ -131,6 +132,24 @@ func (s *SSHServer) handleExec(
 			zap.Int("exit_code", exitCode),
 			zap.Error(runErr),
 		)
+	} else if command == "git-receive-pack" && exitCode == 0 {
+		// Fire-and-forget: record the push event. Mirrors the HTTP git server's
+		// behaviour in gitserver/handler.go. Never blocks the SSH session.
+		actorUsername := username
+		repoID := repo.ID
+		repoName := repo.Name
+		go func() {
+			user, err := s.store.GetUserByUsername(context.Background(), actorUsername)
+			if err != nil {
+				return
+			}
+			_ = s.store.RecordEvent(context.Background(), store.RecordEventParams{
+				ActorID:   user.ID,
+				EventType: "git.push",
+				RepoID:    &repoID,
+				Payload:   map[string]interface{}{"repo": repoName},
+			})
+		}()
 	}
 
 	sendExitStatus(ch, uint32(exitCode))
