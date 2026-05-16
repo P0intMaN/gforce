@@ -17,14 +17,14 @@ func remoteAddr(conn ssh.ConnMetadata) string {
 	if conn == nil {
 		return "<test>"
 	}
-	return remoteAddr(conn)
+	return conn.RemoteAddr().String()
 }
 
 func connUser(conn ssh.ConnMetadata) string {
 	if conn == nil {
 		return "<test>"
 	}
-	return connUser(conn)
+	return conn.User()
 }
 
 func (s *SSHServer) publicKeyCallback(
