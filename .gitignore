@@ -41,3 +41,4 @@ ui/dist/
 # Coverage
 coverage.out
 coverage.htmlui/.vite/
+ui/.vite/
