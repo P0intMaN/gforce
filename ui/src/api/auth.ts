@@ -13,8 +13,18 @@ export async function register(
   return unwrap(await apiClient.post<{ data: User }>('/auth/register', { username, email, password }))
 }
 
-export async function getCurrentUser(): Promise<User> {
-  return unwrap(await apiClient.get<{ data: User }>('/user'))
+/**
+ * Fetches the current user profile.
+ * Pass `token` explicitly when calling immediately after login —
+ * at that point the token is not yet in the Zustand store, so the
+ * request interceptor would send no Authorization header.
+ */
+export async function getCurrentUser(token?: string): Promise<User> {
+  return unwrap(
+    await apiClient.get<{ data: User }>('/user', {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    })
+  )
 }
 
 export async function updateProfile(params: {
