@@ -13,6 +13,7 @@ import (
 	"github.com/gforce/gforce/internal/api"
 	"github.com/gforce/gforce/internal/auth"
 	"github.com/gforce/gforce/internal/config"
+	"github.com/gforce/gforce/internal/sshserver"
 	"github.com/gforce/gforce/internal/server"
 	"github.com/gforce/gforce/internal/store"
 	"github.com/gforce/gforce/internal/store/postgres"
@@ -80,6 +81,19 @@ func runServe(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("database not reachable: %w", err)
 	}
 	logger.Info("database connected")
+
+	// Start SSH server alongside the HTTP server.
+	sshSrv, err := sshserver.NewSSHServer(db, cfg.Git.StoragePath, cfg.Git.SSHHostKeyPath, logger)
+	if err != nil {
+		return fmt.Errorf("initialising SSH server: %w", err)
+	}
+	go func() {
+		addr := fmt.Sprintf(":%d", cfg.Git.SSHPort)
+		logger.Info("starting SSH server", zap.String("addr", addr))
+		if err := sshSrv.ListenAndServe(addr); err != nil {
+			logger.Fatal("SSH server failed", zap.Error(err))
+		}
+	}()
 
 	authSvc, err := auth.NewService(cfg.Auth.JWTSecret, time.Duration(cfg.Auth.TokenTTLMinutes)*time.Minute)
 	if err != nil {

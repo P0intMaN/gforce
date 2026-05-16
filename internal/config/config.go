@@ -46,6 +46,11 @@ type DBConfig struct {
 type GitConfig struct {
 	// StoragePath is the root directory where git repositories are stored on disk.
 	StoragePath string `mapstructure:"storage_path"`
+	// SSHPort is the TCP port the SSH server listens on (default 2222, not 22).
+	SSHPort int `mapstructure:"ssh_port"`
+	// SSHHostKeyPath is where the ED25519 host key is stored across restarts.
+	// If the file doesn't exist it is generated once and saved here.
+	SSHHostKeyPath string `mapstructure:"ssh_host_key_path"`
 }
 
 // AuthConfig contains authentication settings.
@@ -109,6 +114,8 @@ func bindEnvs(v *viper.Viper) {
 		{"db.max_open_conns", "GFORCE_DB_MAX_OPEN_CONNS"},
 		{"db.max_idle_conns", "GFORCE_DB_MAX_IDLE_CONNS"},
 		{"git.storage_path", "GFORCE_GIT_STORAGE_PATH"},
+		{"git.ssh_port", "GFORCE_GIT_SSH_PORT"},
+		{"git.ssh_host_key_path", "GFORCE_GIT_SSH_HOST_KEY_PATH"},
 		{"auth.jwt_secret", "GFORCE_AUTH_JWT_SECRET"},
 		{"auth.token_ttl_minutes", "GFORCE_AUTH_TOKEN_TTL_MINUTES"},
 		{"log.level", "GFORCE_LOG_LEVEL"},
@@ -128,6 +135,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("db.max_open_conns", 25)
 	v.SetDefault("db.max_idle_conns", 5)
 	v.SetDefault("git.storage_path", "/var/lib/gforce/repos")
+	v.SetDefault("git.ssh_port", 2222)
+	v.SetDefault("git.ssh_host_key_path", "./data/host_key")
 	v.SetDefault("auth.token_ttl_minutes", 60)
 	v.SetDefault("log.level", "info")
 	v.SetDefault("kubernetes.namespace", "gforce-system")
