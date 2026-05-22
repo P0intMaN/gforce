@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "gforce.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "gforce.labels" . | nindent 4 }}
+data:
+  GFORCE_SERVER_PORT: {{ .Values.server.port | quote }}
+  GFORCE_GIT_SSH_PORT: {{ .Values.server.sshPort | quote }}
+  GFORCE_LOG_LEVEL: {{ .Values.server.logLevel | quote }}
+  GFORCE_GIT_STORAGE_PATH: {{ .Values.server.gitStoragePath | quote }}
+  GFORCE_GIT_SSH_HOST_KEY_PATH: {{ .Values.server.sshHostKeyPath | quote }}
+  GFORCE_SERVER_BASE_URL: {{ .Values.server.baseURL | quote }}
+  GFORCE_KUBERNETES_NAMESPACE: {{ .Release.Namespace | quote }}

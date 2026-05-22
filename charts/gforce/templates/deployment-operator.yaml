@@ -1,0 +1,54 @@
+{{- if .Values.operator.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gforce.fullname" . }}-operator
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "gforce.labels" . | nindent 4 }}
+    app.kubernetes.io/component: operator
+spec:
+  replicas: {{ .Values.operator.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "gforce.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: operator
+  template:
+    metadata:
+      labels:
+        {{- include "gforce.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: operator
+    spec:
+      serviceAccountName: {{ include "gforce.serviceAccountName" . }}
+      containers:
+        - name: operator
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/gforce-operator"]
+          env:
+            - name: GFORCE_DB_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "gforce.fullname" . }}
+                  key: db-dsn
+            - name: GFORCE_LOG_LEVEL
+              value: {{ .Values.server.logLevel | quote }}
+            - name: GFORCE_GIT_STORAGE_PATH
+              value: {{ .Values.server.gitStoragePath | quote }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8082
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8082
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources.operator | nindent 12 }}
+{{- end }}

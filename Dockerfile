@@ -1,27 +1,34 @@
-# Stage 1: build
-FROM golang:1.22-alpine AS builder
+# Stage 1: Build the React UI
+FROM node:20-alpine AS ui-builder
+WORKDIR /ui
+COPY ui/package*.json ./
+RUN npm ci
+COPY ui/ ./
+RUN npm run build
+# Output: /ui/dist
 
+# Stage 2: Build the Go binaries
+FROM golang:1.22-alpine AS go-builder
 RUN apk add --no-cache git ca-certificates tzdata
-
-WORKDIR /src
-
+WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
-
 COPY . .
+# Embed the built UI into the binary
+COPY --from=ui-builder /ui/dist ./ui/dist
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -trimpath \
+    -ldflags="-w -s -X main.version=$(git describe --tags --always 2>/dev/null || echo dev)" \
+    -o gforce ./cmd/gforce
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -trimpath \
+    -ldflags="-w -s" \
+    -o gforce-operator ./cmd/operator
 
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-    go build -trimpath -ldflags="-s -w" -o /out/gforce ./cmd/gforce
-
-# Stage 2: minimal runtime image
+# Stage 3: Minimal runtime image
 FROM gcr.io/distroless/static-debian12:nonroot
-
-COPY --from=builder /out/gforce /gforce
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
-
-EXPOSE 8080
-
+COPY --from=go-builder /app/gforce /gforce
+COPY --from=go-builder /app/gforce-operator /gforce-operator
+EXPOSE 8080 2222
 USER nonroot:nonroot
-
-ENTRYPOINT ["/gforce", "serve"]
+ENTRYPOINT ["/gforce"]

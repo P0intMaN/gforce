@@ -58,3 +58,11 @@ Service account name.
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+Construct the PostgreSQL DSN from subchart values.
+*/}}
+{{- define "gforce.dbDSN" -}}
+{{- $host := printf "%s-postgresql" .Release.Name -}}
+{{- printf "postgres://%s:%s@%s:5432/%s?sslmode=disable" .Values.postgresql.auth.username .Values.postgresql.auth.password $host .Values.postgresql.auth.database -}}
+{{- end }}

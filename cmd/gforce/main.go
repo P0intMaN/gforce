@@ -13,18 +13,20 @@ import (
 	"github.com/gforce/gforce/internal/api"
 	"github.com/gforce/gforce/internal/auth"
 	"github.com/gforce/gforce/internal/config"
-	"github.com/gforce/gforce/internal/sshserver"
 	"github.com/gforce/gforce/internal/server"
+	"github.com/gforce/gforce/internal/sshserver"
 	"github.com/gforce/gforce/internal/store"
+	migrations "github.com/gforce/gforce/internal/store/migrations"
 	"github.com/gforce/gforce/internal/store/postgres"
+	uiembed "github.com/gforce/gforce/ui"
 	"github.com/spf13/cobra"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	k8sclient "sigs.k8s.io/controller-runtime/pkg/client"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
 
 func main() {
@@ -40,6 +42,7 @@ func rootCmd() *cobra.Command {
 		Short: "gforce — Kubernetes-native Git platform",
 	}
 	root.AddCommand(serveCmd())
+	root.AddCommand(migrateCmd())
 	return root
 }
 
@@ -49,6 +52,35 @@ func serveCmd() *cobra.Command {
 		Short: "Start the gforce HTTP API server",
 		RunE:  runServe,
 	}
+}
+
+func migrateCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "migrate",
+		Short: "Run database migrations and exit",
+		RunE:  runMigrate,
+	}
+}
+
+func runMigrate(_ *cobra.Command, _ []string) error {
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+
+	ctx := context.Background()
+	pool, err := postgres.NewPool(ctx, cfg.DB.DSN, int32(cfg.DB.MaxOpenConns), int32(cfg.DB.MaxIdleConns))
+	if err != nil {
+		return fmt.Errorf("connecting to database: %w", err)
+	}
+	defer pool.Close()
+
+	if err := store.RunMigrations(ctx, pool, migrations.SQLFiles); err != nil {
+		return fmt.Errorf("running migrations: %w", err)
+	}
+
+	fmt.Println("migrations applied successfully")
+	return nil
 }
 
 func runServe(_ *cobra.Command, _ []string) error {
@@ -71,7 +103,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 	}
 	defer pool.Close()
 
-	if err := store.RunMigrations(ctx, pool, "internal/store/migrations"); err != nil {
+	if err := store.RunMigrations(ctx, pool, migrations.SQLFiles); err != nil {
 		return fmt.Errorf("running migrations: %w", err)
 	}
 	logger.Info("migrations applied")
@@ -82,7 +114,6 @@ func runServe(_ *cobra.Command, _ []string) error {
 	}
 	logger.Info("database connected")
 
-	// Start SSH server alongside the HTTP server.
 	sshSrv, err := sshserver.NewSSHServer(db, cfg.Git.StoragePath, cfg.Git.SSHHostKeyPath, logger)
 	if err != nil {
 		return fmt.Errorf("initialising SSH server: %w", err)
@@ -100,8 +131,6 @@ func runServe(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("initialising auth service: %w", err)
 	}
 
-	// Optionally wire up the Kubernetes client for CR sync.
-	// If running outside a cluster (e.g. local dev), this is skipped gracefully.
 	var k8s k8sclient.Client
 	k8sNamespace := cfg.Kubernetes.Namespace
 	if k8sCfg, err := ctrl.GetConfig(); err == nil {
@@ -125,6 +154,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 		Logger:         logger,
 		K8sClient:      k8s,
 		K8sNamespace:   k8sNamespace,
+		UIFiles:        uiembed.FS,
 	})
 
 	srv := server.New(server.Config{

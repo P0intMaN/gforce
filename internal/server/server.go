@@ -4,6 +4,7 @@ package server
 import (
 	"context"
 	"fmt"
+	ioFS "io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -57,6 +58,37 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		return fmt.Errorf("shutting down http server: %w", err)
 	}
 	return nil
+}
+
+// UIHandlerFS serves the embedded React UI from an fs.FS (embed.FS).
+// Non-API, non-git paths fall back to index.html for SPA client-side routing.
+// Returns nil if fsys is nil.
+func UIHandlerFS(fsys ioFS.FS) http.Handler {
+	if fsys == nil {
+		return nil
+	}
+	sub, err := ioFS.Sub(fsys, "dist")
+	if err != nil {
+		return nil
+	}
+	fileServer := http.FileServer(http.FS(sub))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/") || strings.Contains(r.URL.Path, ".git/") {
+			http.NotFound(w, r)
+			return
+		}
+		clean := strings.TrimPrefix(r.URL.Path, "/")
+		if clean == "" {
+			clean = "index.html"
+		}
+		if _, err := ioFS.Stat(sub, clean); err != nil {
+			idx, _ := ioFS.ReadFile(sub, "index.html")
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write(idx)
+			return
+		}
+		fileServer.ServeHTTP(w, r)
+	})
 }
 
 // UIHandler returns an http.Handler that serves the built React UI from distDir.

@@ -1,103 +1,67 @@
+image:
+  repository: gforce
+  tag: latest
+  pullPolicy: IfNotPresent
+
 replicaCount: 1
 
-image:
-  repository: ghcr.io/gforce/gforce
-  pullPolicy: IfNotPresent
-  tag: ""
-
-imagePullSecrets: []
-nameOverride: ""
-fullnameOverride: ""
-
-serviceAccount:
-  create: true
-  annotations: {}
-  name: ""
-
-podAnnotations:
-  prometheus.io/scrape: "true"
-  prometheus.io/port: "8080"
-  prometheus.io/path: "/metrics"
-
-podSecurityContext:
-  runAsNonRoot: true
-  runAsUser: 65532
-  fsGroup: 65532
-
-securityContext:
-  allowPrivilegeEscalation: false
-  readOnlyRootFilesystem: true
-  capabilities:
-    drop:
-      - ALL
-
-service:
-  type: ClusterIP
+server:
   port: 8080
+  sshPort: 2222
+  baseURL: "http://localhost:8080"
+  logLevel: debug
+  gitStoragePath: /data/repos
+  sshHostKeyPath: /data/host_key
+  jwtSecret: "change-me-in-production"
 
-ingress:
-  enabled: false
-  className: ""
-  annotations: {}
-  hosts:
-    - host: gforce.local
-      paths:
-        - path: /
-          pathType: Prefix
-  tls: []
-
-resources:
-  limits:
-    cpu: 500m
-    memory: 256Mi
-  requests:
-    cpu: 100m
-    memory: 128Mi
-
-autoscaling:
-  enabled: false
-  minReplicas: 1
-  maxReplicas: 5
-  targetCPUUtilizationPercentage: 80
-
-persistence:
+operator:
   enabled: true
-  storageClass: ""
-  accessMode: ReadWriteOnce
-  size: 10Gi
-  mountPath: /var/lib/gforce/repos
+  replicaCount: 1
 
 postgresql:
   enabled: true
   auth:
-    database: gforce
     username: gforce
-    existingSecret: gforce-db-secret
-    secretKeys:
-      adminPasswordKey: postgres-password
-      userPasswordKey: password
+    password: gforce
+    database: gforce
+  primary:
+    persistence:
+      size: 10Gi
 
-config:
+persistence:
+  enabled: true
+  storageClass: standard
+  size: 10Gi
+  accessMode: ReadWriteOnce
+  mountPath: /data
+
+ingress:
+  enabled: false
+  host: git.example.com
+  tls: false
+
+serviceAccount:
+  create: true
+  name: gforce
+
+rbac:
+  create: true
+
+resources:
   server:
-    port: 8080
-    readTimeoutSecs: 30
-    writeTimeoutSecs: 30
-  db:
-    maxOpenConns: 25
-    maxIdleConns: 5
-  git:
-    storagePath: /var/lib/gforce/repos
-  auth:
-    tokenTTLMinutes: 60
-  log:
-    level: info
-  kubernetes:
-    namespace: gforce-system
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  operator:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
 
-existingSecret: ""
-jwtSecretKey: jwt-secret
-dbDsnKey: db-dsn
-
-nodeSelector: {}
-tolerations: []
-affinity: {}
+nameOverride: ""
+fullnameOverride: ""

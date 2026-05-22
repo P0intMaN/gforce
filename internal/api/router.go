@@ -2,6 +2,7 @@
 package api
 
 import (
+	"io/fs"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -29,8 +30,11 @@ type RouterConfig struct {
 	// K8sClient is optional — when non-nil, Repository CRs are created on repo creation.
 	K8sClient    k8sclient.Client
 	K8sNamespace string
-	// UIDistDir is the path to the built React UI (ui/dist).
-	// When set, the UI is served as a catch-all fallback after all API routes.
+	// UIFiles is the embedded React UI filesystem (from ui.FS).
+	// Takes precedence over UIDistDir when set.
+	UIFiles fs.FS
+	// UIDistDir is the path to the built React UI (ui/dist) on disk.
+	// Ignored when UIFiles is set.
 	UIDistDir string
 }
 
@@ -122,8 +126,14 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	})
 
 	// Catch-all: git smart-HTTP for /{owner}/{repo}.git/... paths;
-	// React SPA for everything else (when UIDistDir is configured).
-	if uiH := server.UIHandler(cfg.UIDistDir); uiH != nil {
+	// React SPA for everything else (when UI is configured).
+	var uiH http.Handler
+	if cfg.UIFiles != nil {
+		uiH = server.UIHandlerFS(cfg.UIFiles)
+	} else {
+		uiH = server.UIHandler(cfg.UIDistDir)
+	}
+	if uiH != nil {
 		r.Handle("/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if isGitPath(r.URL.Path) {
 				gitSmartHTTP.ServeHTTP(w, r)
