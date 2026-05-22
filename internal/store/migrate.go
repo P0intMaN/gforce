@@ -4,8 +4,7 @@ package store
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
+	"io/fs"
 	"sort"
 	"strings"
 
@@ -18,17 +17,17 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
     applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )`
 
-// RunMigrations applies all unapplied .sql files from migrationsDir in
+// RunMigrations applies all unapplied .sql files from fsys in
 // lexicographic order. It is idempotent: files already recorded in the
 // schema_migrations table are skipped. Safe to call on every startup.
-func RunMigrations(ctx context.Context, pool *pgxpool.Pool, migrationsDir string) error {
+func RunMigrations(ctx context.Context, pool *pgxpool.Pool, fsys fs.FS) error {
 	if _, err := pool.Exec(ctx, createMigrationsTable); err != nil {
 		return fmt.Errorf("store.RunMigrations: creating schema_migrations table: %w", err)
 	}
 
-	entries, err := os.ReadDir(migrationsDir)
+	entries, err := fs.ReadDir(fsys, ".")
 	if err != nil {
-		return fmt.Errorf("store.RunMigrations: reading migrations dir %q: %w", migrationsDir, err)
+		return fmt.Errorf("store.RunMigrations: reading migrations: %w", err)
 	}
 
 	var files []string
@@ -49,7 +48,7 @@ func RunMigrations(ctx context.Context, pool *pgxpool.Pool, migrationsDir string
 			continue
 		}
 
-		sql, err := os.ReadFile(filepath.Join(migrationsDir, name))
+		sql, err := fs.ReadFile(fsys, name)
 		if err != nil {
 			return fmt.Errorf("store.RunMigrations: reading %q: %w", name, err)
 		}

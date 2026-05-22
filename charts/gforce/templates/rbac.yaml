@@ -1,0 +1,36 @@
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "gforce.fullname" . }}
+  labels:
+    {{- include "gforce.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["gforce.io"]
+    resources: ["repositories", "gforceusers"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["gforce.io"]
+    resources: ["repositories/status", "gforceusers/status"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "gforce.fullname" . }}
+  labels:
+    {{- include "gforce.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "gforce.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "gforce.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

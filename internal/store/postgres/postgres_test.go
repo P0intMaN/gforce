@@ -3,6 +3,7 @@ package postgres_test
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 	"time"
 
@@ -50,7 +51,7 @@ func newTestDB(t *testing.T) *postgres.DB {
 	t.Cleanup(func() { pool.Close() })
 
 	require.NoError(t,
-		store.RunMigrations(ctx, pool, "../migrations"),
+		store.RunMigrations(ctx, pool, os.DirFS("../migrations")),
 		"running migrations",
 	)
 

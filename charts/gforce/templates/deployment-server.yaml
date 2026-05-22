@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gforce.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "gforce.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "gforce.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      labels:
+        {{- include "gforce.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: server
+    spec:
+      serviceAccountName: {{ include "gforce.serviceAccountName" . }}
+      initContainers:
+        - name: migrate
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/gforce", "migrate"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "gforce.fullname" . }}
+          env:
+            - name: GFORCE_DB_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "gforce.fullname" . }}
+                  key: db-dsn
+            - name: GFORCE_AUTH_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "gforce.fullname" . }}
+                  key: jwt-secret
+      containers:
+        - name: server
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/gforce", "serve"]
+          ports:
+            - name: http
+              containerPort: {{ .Values.server.port }}
+              protocol: TCP
+            - name: ssh
+              containerPort: {{ .Values.server.sshPort }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "gforce.fullname" . }}
+          env:
+            - name: GFORCE_DB_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "gforce.fullname" . }}
+                  key: db-dsn
+            - name: GFORCE_AUTH_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "gforce.fullname" . }}
+                  key: jwt-secret
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            failureThreshold: 3
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.persistence.mountPath }}
+          resources:
+            {{- toYaml .Values.resources.server | nindent 12 }}
+      volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "gforce.fullname" . }}-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}

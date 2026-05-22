@@ -6,11 +6,16 @@ metadata:
   labels:
     {{- include "gforce.labels" . | nindent 4 }}
 spec:
-  type: {{ .Values.service.type }}
+  type: ClusterIP
   ports:
-    - port: {{ .Values.service.port }}
+    - name: http
+      port: 80
       targetPort: http
       protocol: TCP
-      name: http
+    - name: ssh
+      port: {{ .Values.server.sshPort }}
+      targetPort: ssh
+      protocol: TCP
   selector:
     {{- include "gforce.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: server

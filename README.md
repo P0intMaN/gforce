@@ -41,34 +41,54 @@ Unlike GitHub-style platforms that run *on* Kubernetes as an afterthought, gforc
                       └───────────────────┘
 ```
 
-## Quickstart (minikube + Helm)
+## Deploy on Kubernetes (kind)
 
-**Prerequisites:** `minikube`, `helm`, `kubectl`
+**Prerequisites:** `kind`, `helm`, `kubectl`, `docker`
 
 ```bash
-# Start a local cluster
-minikube start --cpus=2 --memory=4096
+# Create the kind cluster (1 control-plane + 2 workers)
+kind create cluster --config kind-config.yaml
 
-# Add the gforce Helm repo (once published)
-helm repo add gforce https://charts.gforce.dev
-helm repo update
+# One-command build + deploy
+make kind-setup
 
-# Create a namespace and a secret with required credentials
-kubectl create namespace gforce-system
-kubectl -n gforce-system create secret generic gforce \
-  --from-literal=db-dsn="postgres://gforce:password@gforce-postgresql:5432/gforce?sslmode=disable" \
-  --from-literal=jwt-secret="$(openssl rand -hex 32)"
+# Access the platform
+kubectl port-forward -n gforce-system svc/gforce 8080:80 &
+kubectl port-forward -n gforce-system svc/gforce 2222:2222 &
 
-# Install
-helm install gforce gforce/gforce \
-  --namespace gforce-system \
-  --set existingSecret=gforce
-
-# Verify
-kubectl -n gforce-system rollout status deployment/gforce
-kubectl -n gforce-system port-forward svc/gforce 8080:8080 &
+# Open http://localhost:8080
 curl http://localhost:8080/healthz
+
+# Git over HTTP
+git clone http://localhost:8080/owner/repo.git
+
+# Git over SSH
+git clone ssh://git@localhost:2222/owner/repo.git
+
+# Inspect CRDs
+kubectl get repositories -n gforce-system
+kubectl get gforceusers -n gforce-system
+
+# Tear down
+make kind-teardown
 ```
+
+## Deploy on any Kubernetes cluster
+
+```bash
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm dependency update ./charts/gforce
+
+helm install gforce ./charts/gforce \
+  --namespace gforce-system \
+  --create-namespace \
+  --set server.baseURL=https://git.mycompany.com \
+  --set ingress.enabled=true \
+  --set ingress.host=git.mycompany.com \
+  --set server.jwtSecret="$(openssl rand -hex 32)"
+```
+
+## Quickstart (local dev)
 
 ## Development Setup
 
@@ -113,9 +133,17 @@ make build
 | `make build` | Compile all Go binaries |
 | `make test` | Run tests with race detector |
 | `make lint` | Run golangci-lint |
-| `make docker-build` | Build the container image |
+| `make docker-build` | Build the container image (`gforce:latest`) |
+| `make kind-load` | Load image into kind cluster |
+| `make helm-lint` | Lint the Helm chart |
+| `make helm-template` | Render Helm templates to stdout |
+| `make helm-install` | Install/upgrade via Helm |
+| `make helm-uninstall` | Uninstall from cluster |
+| `make kind-setup` | Build, load, and install in one step |
+| `make kind-teardown` | Remove GForce from kind |
+| `make port-forward` | Forward HTTP (8080) and SSH (2222) ports |
 | `make generate` | Regenerate CRD manifests |
-| `make migrate` | Apply SQL migrations |
+| `make migrate` | Run DB migrations locally |
 | `make dev` | Hot-reload server via air |
 
 ## Contributing
